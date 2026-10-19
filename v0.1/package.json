@@ -1,0 +1,32 @@
+{
+  "name": "life-dashboard-v0-1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.18.3",
+  "scripts": {
+    "dev:api": "tsx watch apps/api/src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts tests/ai/*.test.ts",
+    "test:integration": "tsx --test --test-concurrency=1 tests/integration/*.test.ts",
+    "db:migrate": "tsx packages/db/src/migrate.ts",
+    "db:seed": "tsx packages/db/src/seed.ts",
+    "contracts:export": "tsx scripts/export-contracts.ts",
+    "build:web": "node scripts/build-web.mjs"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "11.2.1",
+    "decimal.js": "10.6.0",
+    "drizzle-orm": "0.45.4",
+    "fastify": "5.12.7",
+    "luxon": "3.7.2",
+    "pg": "8.23.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/luxon": "3.7.1",
+    "@types/node": "24.7.2",
+    "@types/pg": "8.15.5",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}

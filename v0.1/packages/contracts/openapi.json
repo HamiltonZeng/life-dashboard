@@ -1,0 +1,3581 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "人生面板 T2/T3 API",
+    "version": "0.2.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:18080"
+    }
+  ],
+  "security": [
+    {
+      "localSession": []
+    }
+  ],
+  "paths": {
+    "/api/v1/modules": {
+      "get": {
+        "summary": "List modules",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "module_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create modules",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/modules/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      },
+      "patch": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "base_version": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "status": {
+                    "enum": [
+                      "enabled",
+                      "disabled",
+                      "archived"
+                    ]
+                  }
+                },
+                "required": [
+                  "base_version"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/record-types": {
+      "get": {
+        "summary": "List record-types",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "module_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create record-types",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordTypeInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/record-types/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks": {
+      "get": {
+        "summary": "List tasks",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "module_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create tasks",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "summary": "List metrics",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "module_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create metrics",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MetricInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/achievements": {
+      "get": {
+        "summary": "List achievements",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "module_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create achievements",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AchievementInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/achievements/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/records": {
+      "get": {
+        "summary": "List records",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "module_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create records",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/records/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      },
+      "put": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUpdate"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "base_version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "base_version"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/awards": {
+      "get": {
+        "summary": "List awards",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "module_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/awards/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{id}/complete": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "base_version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "base_version"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/capabilities": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/bootstrap": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/session": {
+      "post": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "login_secret": {
+                    "type": "string",
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "login_secret"
+                ]
+              }
+            }
+          }
+        },
+        "security": []
+      },
+      "delete": {
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/config": {
+      "get": {
+        "summary": "AI provider, model and structured-output capability status (no keys)",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/generations": {
+      "get": {
+        "summary": "List AI generation jobs (candidates omitted)",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "module_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "Generate a module blueprint; apply atomically or keep a preview candidate",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiGenerationInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/generations/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Generation job detail with candidate and validation",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/generations/{id}/apply": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Apply a preview candidate; repeated apply returns the same batch",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiApplyInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ai/generations/{id}/retry": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Retry a failed generation within attempt and budget limits",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/generations/{id}/cancel": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Cancel an unapplied candidate",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/batches": {
+      "get": {
+        "summary": "List applied AI batches",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "module_id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/ai/batches/{id}": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Applied batch with local reference to real id mapping",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
+    },
+    "/api/v1/ai/batches/{id}/revoke": {
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Revoke a batch; delete unreferenced definitions or archive referenced configuration",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "429": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "502": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "503": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "504": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Origin",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "localSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "life_session"
+      }
+    },
+    "schemas": {
+      "ModuleInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "description": {
+            "default": "",
+            "type": "string",
+            "maxLength": 1000
+          },
+          "icon": {
+            "type": "string",
+            "enum": [
+              "book",
+              "dumbbell",
+              "wallet",
+              "sparkles",
+              "trophy",
+              "flag",
+              "leaf",
+              "music",
+              "chat",
+              "star"
+            ]
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "blue",
+              "green",
+              "amber",
+              "violet",
+              "rose",
+              "cyan",
+              "slate"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "icon",
+          "color"
+        ],
+        "additionalProperties": false
+      },
+      "RecordTypeInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "module_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "fields": {
+            "minItems": 1,
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "textarea",
+                    "integer",
+                    "decimal",
+                    "date",
+                    "boolean",
+                    "single_select"
+                  ]
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "unit": {
+                  "default": null,
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 30
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "options": {
+                  "default": [],
+                  "maxItems": 30,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "minimum": {
+                  "default": null,
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "maximum": {
+                  "default": null,
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "type",
+                "required"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "name",
+          "fields"
+        ],
+        "additionalProperties": false
+      },
+      "TaskInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "module_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "completion_mode": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "record_optional",
+              "record_required"
+            ]
+          },
+          "record_type_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "acceptance": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "exists"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "field_gte"
+                      },
+                      "field_key": {
+                        "type": "string"
+                      },
+                      "threshold": {
+                        "type": "string",
+                        "pattern": "^-?(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "field_key",
+                      "threshold"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "business_date": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "title",
+          "completion_mode",
+          "record_type_id",
+          "acceptance",
+          "timezone"
+        ],
+        "additionalProperties": false
+      },
+      "MetricInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "module_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "record_type_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          },
+          "aggregation": {
+            "type": "string",
+            "enum": [
+              "count",
+              "sum",
+              "avg",
+              "latest"
+            ]
+          },
+          "field_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "window": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month",
+              "all_time"
+            ]
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "record_type_id",
+          "name",
+          "unit",
+          "aggregation",
+          "field_key",
+          "window",
+          "timezone"
+        ],
+        "additionalProperties": false
+      },
+      "AchievementInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "module_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "metric_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "operator": {
+            "type": "string",
+            "enum": [
+              "gte",
+              "lte"
+            ]
+          },
+          "threshold": {
+            "type": "string",
+            "pattern": "^-?(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+          },
+          "history_policy": {
+            "default": "include_existing",
+            "type": "string",
+            "enum": [
+              "include_existing",
+              "from_activation"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "metric_id",
+          "name",
+          "operator",
+          "threshold"
+        ],
+        "additionalProperties": false
+      },
+      "RecordInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "module_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "record_type_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "schema_version": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "confirmed"
+            ]
+          },
+          "values": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "task_ids": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "module_id",
+          "record_type_id",
+          "schema_version",
+          "occurred_at",
+          "timezone",
+          "status",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "RecordUpdate": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "record_type_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "schema_version": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "confirmed"
+            ]
+          },
+          "values": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "task_ids": {
+            "default": [],
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          "base_version": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "module_id",
+          "record_type_id",
+          "schema_version",
+          "occurred_at",
+          "timezone",
+          "status",
+          "values",
+          "base_version"
+        ],
+        "additionalProperties": false
+      },
+      "AiGenerationInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "create",
+              "extend"
+            ]
+          },
+          "module_id": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "content_types": {
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "record_types",
+                "metrics",
+                "tasks",
+                "achievements"
+              ]
+            }
+          },
+          "apply_mode": {
+            "default": "apply",
+            "type": "string",
+            "enum": [
+              "apply",
+              "preview"
+            ]
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "reference": {
+            "default": {
+              "record_type_ids": [],
+              "metric_ids": []
+            },
+            "type": "object",
+            "properties": {
+              "record_type_ids": {
+                "default": [],
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                }
+              },
+              "metric_ids": {
+                "default": [],
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "mode",
+          "prompt",
+          "content_types",
+          "timezone"
+        ],
+        "additionalProperties": false
+      },
+      "AiApplyInput": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "base_module_version": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}
