@@ -17,7 +17,7 @@
 
 固定环境：Node 24 开发镜像、PostgreSQL 18 镜像；浏览器为官方 Playwright 1.64.1 镜像，实测 Linux arm64、Chromium 156.0.8078.4。浏览器镜像内 Node v24.21.0，PostgreSQL 18.6。具体摘要与运行信息在 `compose*.yaml` 和 `environment.json`。
 
-上一集成基线 `7552747`。本版源码基线与最终发布提交由最终验收日志记录；最终版本标签为 `v0.1.0`，可通过 `git rev-parse 'v0.1.0^{commit}'` 获取完整提交 ID。无远端推送、无公网部署。
+上一集成基线 `7552747`。本版验收源码基线 `c100033fba55f8f1646bdc167ca818a04d76ceae`；最终版本标签 `v0.1.0` 指向随后仅补记基线哈希的文档提交，可通过 `git rev-parse 'v0.1.0^{commit}'` 获取完整提交 ID。无远端推送、无公网部署。
 
 ## 限制
 
