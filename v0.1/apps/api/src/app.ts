@@ -7,6 +7,7 @@ import { Service } from './service.js';
 import { DomainError, requireThat } from '../../../packages/domain/src/index.js';
 import { CONTRACT_VERSION, aiApplyInput, aiEmptyInput, aiGenerationInput, pageQuery, uuid } from '../../../packages/contracts/src/index.js';
 import { LOCAL_USER_ID } from '../../../packages/db/src/seed.js';
+import { exportUserData } from '../../../packages/db/src/backup.js';
 import { AiService } from '../../../packages/ai/src/service.js';
 import { DeepSeekAdapter, MockAdapter, type ModelAdapter } from '../../../packages/ai/src/adapter.js';
 import { loadAiConfig, type AiConfig } from '../../../packages/ai/src/config.js';
@@ -72,11 +73,12 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
     contract_version:CONTRACT_VERSION,stage:'T2/T3-ai',sync:false,
     cloud_ai:ai.configSummary().cloud_ai,ai_generation:true,ai_provider:ai.configSummary().provider,
     ai_schema_version:ai.configSummary().schema_version,ai_preview:true,
-    recurring_tasks:false,professional_ledger:false,local_session:true,
+    recurring_tasks:false,professional_ledger:false,local_session:true,user_export:true,user_restore:'cli',
     aggregations:['count','sum','avg','latest'],windows:['day','week','month','all_time']
   }}));
   const idempotency=(req:any)=>uuid.parse(req.headers['idempotency-key']);
   app.get('/api/v1/bootstrap',async req=>({data:await service.snapshot(req.accountId)}));
+  app.get('/api/v1/export',async req=>({data:await exportUserData(pool,req.accountId)}));
   app.get('/api/v1/ai/config',async()=>({data:ai.configView()}));
   app.post('/api/v1/ai/generations',async req=>({data:await ai.createGeneration(req.accountId,aiGenerationInput.parse(req.body),idempotency(req))}));
   app.get('/api/v1/ai/generations',async req=>ai.listGenerations(req.accountId,pageQuery.parse(req.query)));

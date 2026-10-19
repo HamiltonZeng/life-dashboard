@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ./dev-server.mjs",
-    "typecheck": "tsc --noEmit"
+    "verify": "tsx ./scripts/verify-web.ts"
   }
 }

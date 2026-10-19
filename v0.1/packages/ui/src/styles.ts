@@ -212,7 +212,7 @@ html, body {
   display: none;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  padding: 10px 14px;
   background: var(--ld-bg-panel);
   border-bottom: 1px solid var(--ld-border);
   position: sticky;
@@ -226,11 +226,13 @@ html, body {
   bottom: 0;
   left: 0;
   right: 0;
+  height: 58px;
   background: var(--ld-bg-panel);
   border-top: 1px solid var(--ld-border);
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
   z-index: 30;
   justify-content: space-around;
+  align-items: center;
 }
 
 .ld-dock-btn {
@@ -239,7 +241,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 6px 4px;
+  padding: 4px 2px;
   border: none;
   background: transparent;
   color: var(--ld-text-secondary);
@@ -311,7 +313,7 @@ html, body {
   flex-wrap: wrap;
 }
 
-/* Return Context Banner */
+/* Return Context & Draft Recovery Banners */
 .ld-return-banner {
   display: flex;
   align-items: center;
@@ -322,6 +324,31 @@ html, body {
   background: var(--ld-accent-soft);
   border: 1px solid rgba(59, 130, 246, 0.4);
   font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.ld-draft-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--ld-radius-sm);
+  background: var(--ld-bg-elevated);
+  border: 1px solid var(--ld-border-strong);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.ld-conflict-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--ld-radius-md);
+  background: var(--ld-danger-soft);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  font-size: 12.5px;
 }
 
 /* Module Filter Chips */
@@ -383,6 +410,7 @@ html, body {
   border-radius: var(--ld-radius-md);
   padding: 3px;
   gap: 2px;
+  flex-wrap: wrap;
 }
 
 .ld-tab-btn {
@@ -438,7 +466,7 @@ html, body {
 /* Cards & Grids */
 .ld-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 14px;
 }
 
@@ -653,7 +681,7 @@ html, body {
 
 .ld-form-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 
@@ -670,6 +698,8 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .ld-label-hint {
@@ -714,7 +744,7 @@ html, body {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  z-index: 60;
+  z-index: 70;
 }
 
 .ld-modal {
@@ -723,7 +753,7 @@ html, body {
   border-radius: var(--ld-radius-lg);
   box-shadow: var(--ld-shadow);
   width: 100%;
-  max-width: 620px;
+  max-width: 640px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -731,12 +761,13 @@ html, body {
 }
 
 .ld-modal-header {
-  padding: 16px 20px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--ld-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .ld-modal-title {
@@ -746,20 +777,25 @@ html, body {
 }
 
 .ld-modal-body {
-  padding: 18px 20px;
+  padding: 16px 18px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  flex: 1;
+  min-height: 0;
 }
 
 .ld-modal-footer {
-  padding: 12px 20px;
+  padding: 12px 18px;
   border-top: 1px solid var(--ld-border);
+  background: var(--ld-bg-panel);
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 /* Empty & Error States */
@@ -818,6 +854,7 @@ html, body {
   justify-content: space-between;
   gap: 12px;
   font-size: 13px;
+  flex-wrap: wrap;
 }
 
 .ld-error-code {
@@ -860,6 +897,7 @@ html, body {
   flex-direction: column;
   gap: 8px;
   max-width: 380px;
+  pointer-events: none;
 }
 
 .ld-toast {
@@ -870,6 +908,7 @@ html, body {
   padding: 12px 14px;
   box-shadow: var(--ld-shadow);
   font-size: 13px;
+  pointer-events: auto;
 }
 
 .ld-toast.is-unlock {
@@ -902,7 +941,7 @@ html, body {
   border: 2px solid var(--ld-bg-base);
 }
 
-/* Table for settings dependency check */
+/* Table for settings dependency check & support matrix */
 .ld-table {
   width: 100%;
   border-collapse: collapse;
@@ -925,7 +964,7 @@ html, body {
 /* AI generation (T2/T3): config summary, validation issues, candidate preview */
 .ld-ai-config-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
 }
 
@@ -1066,7 +1105,7 @@ html, body {
   vertical-align: top;
 }
 
-/* Responsive Mobile Layout */
+/* Responsive Mobile Layout (including 360px narrow screen & non-occlusion) */
 @media (max-width: 768px) {
   .ld-app-shell {
     flex-direction: column;
@@ -1081,12 +1120,25 @@ html, body {
     display: flex;
   }
   .ld-panel-container {
-    padding: 16px 14px 84px;
+    padding: 14px 12px 92px;
+  }
+  .ld-card-grid {
+    grid-template-columns: 1fr;
+  }
+  .ld-form-row {
+    grid-template-columns: 1fr;
+  }
+  .ld-modal-backdrop {
+    align-items: flex-start;
+    padding: 10px 8px calc(68px + env(safe-area-inset-bottom, 0px));
+  }
+  .ld-modal {
+    max-height: calc(100vh - 82px);
   }
   .ld-toast-container {
-    bottom: 72px;
-    left: 14px;
-    right: 14px;
+    bottom: 68px;
+    left: 12px;
+    right: 12px;
     max-width: none;
   }
 }

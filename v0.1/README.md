@@ -1,6 +1,6 @@
-# 人生面板 v0.1：五面板前端 + T2/T3 AI 生成
+# 人生面板 v0.1：五面板前端 + T2/T3 AI + S0/S1 质量收口
 
-本目录是本地开发工作区，当前已包含 T0/T1 后端、T1 前端（空白首页与五面板）以及 T2/T3 AI 生成配置（模块蓝图 1.0）。固定入口 `http://localhost:18080` 由 Caddy 统一提供：`/api/*`、`/health/*` 反向代理到 Fastify，其余路径（SPA 路由、`/dist/*.js`、`/packages/ui/dist/*.js`）由 web 服务提供。首版默认 AI 供应商为本地确定性 mock，不是真实 DeepSeek 调用。本交付不是整版发布。
+本目录是本地开发工作区，当前已包含 T0/T1 后端、T1 前端（空白首页与五面板）、T2/T3 AI 生成配置（模块蓝图 1.0），以及 S0-A 后端边界修复、S0-B 前端模块化/可复跑验证和 S1 本机草稿/稳定提交/最小导出恢复。固定入口 `http://localhost:18080` 由 Caddy 统一提供：`/api/*`、`/health/*` 反向代理到 Fastify，其余路径（SPA 路由、`/dist/*.js`、`/packages/ui/dist/*.js`）由 web 服务提供。首版默认 AI 供应商为本地确定性 mock，不是真实 DeepSeek 调用。本交付不是整版发布。
 
 ## 启动
 
@@ -34,6 +34,10 @@ sh scripts/start.sh
 - 模块蓝图 1.0 五层校验：完整 JSON 解析、结构（未知字段/枚举/边界）、语义（引用/单位/字段/周期）、权限与版本（用户、目标模块、允许引用、模块版本）、业务（不写真实事实、不直接授予成就、不覆盖已有配置）。
 - 可应用蓝盘子集：通用记录模板、`count/sum/avg/latest` 数值、`unscheduled` 或 `once` 任务、一次性或按统计周期（`per_period`）成就。`daily/weekly` 周期任务与超出子集的规则会被明确拒绝并保留候选，不会静默降级。
 - 设置面板展示实时 AI 配置与最近任务；任务/数值/成就面板与设置提供「✦ AI 生成」入口。
+- S0-A 边界修复：按模块筛选 AI 批次不再 500；配额在用户锁内原子预留；取消/跳过任务拒绝复活；归档数值不能成为新成就依赖；模型单次时限覆盖响应体并增加本次运行总时限。
+- S0-B 前端收敛：`apps/web/src` 拆分为类型、存储、API、状态、面板、弹窗、表单控制器、AI 视图与主入口；打开弹窗时的局部重绘与输入快照，避免通知/冲突刷新清空未保存输入。
+- S1 记录可靠性：本机 `localStorage` 草稿自动恢复；`已保存本机 → 等待确认 → 网络结果未知 → 服务器已确认 / 冲突待处理` 显式状态；未知网络重试复用同一 `operation_id`，内容修改才轮换；409 保留输入并展示服务端最新版本。
+- S1 最小导出/恢复：`GET /api/v1/export` 与 `pnpm export:data` 生成带版本/校验和/迁移清单的用户数据备份；`pnpm restore:data` 只能恢复到空且迁移一致的隔离库，校验/外键/计数失败整体回滚，绝不在开发库上合并覆盖。
 
 学习模板的 `duration_minutes` 可空：用户只知道学了什么时可以保存，累计次数增加但分钟数保持未知。娱乐、健康、财富初始模板只记文本；不是营养计算器、训练量算法或正式账本。AI 只生成配置定义，不生成真实记录，也不会直接完成或解锁任何任务与成就。
 
@@ -58,15 +62,28 @@ sh scripts/start.sh
 
 配额语义：目标/输入预检失败时事务回滚，不占任务名额；预留成功的任务无论供应商失败、候选取消或批次撤销，都保留名额直到滚动 24h 过期，避免未知模型扣费被当成免费。相同幂等键重放不占新名额；显式重试沿用同一任务和累计尝试上限，已报告 token 用量累计保留。供应商失败且未返回用量的调用费用仍未知，不能将记录中的 0 当作零费用；本阶段未实现货币预算与实际账单结算。
 
+## S1 导出与恢复
+
+- `GET /api/v1/export`（需本地会话）返回版本化、带 SHA-256 校验和的用户数据：模块、模板、任务模板/实例、记录（含软删除墓碑与修订）、数值、成就、授予、同步游标与变更日志、幂等回执。**不包含**会话/凭据、AI 生成任务与批次审计；备份文件包含个人记录，需自行妥善保管。
+- 手工导出：`docker compose run --rm tools corepack pnpm export:data [--out <path>]`，默认写入 `.runtime/backups/life-dashboard-<时间>.json`（权限 0600）。
+- 手工恢复：`docker compose run --rm tools corepack pnpm restore:data --file <path>`。只接受**空的、迁移版本一致的目标库**，拒绝合并或覆盖已有数据；恢复在一个事务内完成，校验和、迁移、主键/外键或行数不一致都会整体回滚。会话不会被恢复，恢复后需重新登录。
+- 安全性：默认拒绝向 `life_dashboard` 开发库恢复；需要显式 `--allow-development`。恢复前请先备份当前库，且不要与正在运行的旧版本共享同一数据目录。
+
 ## 验证
 
-S0-A 后端、既有规则、构建与审计可统一运行，输出写入 `.runtime/test-artifacts/stage2-codex`：
+S0-A 后端、S0-B/S1 前端套件、构建、审计和统一入口可用一条命令从宿主机检查（工具仍在 Docker 内运行）：
+
+```sh
+sh scripts/verify-all.sh
+```
+
+也可分开运行：`sh scripts/verify-backend.sh`（typecheck/unit/build/contracts/audit/隔离 PostgreSQL 集成）与 `docker compose run --rm tools corepack pnpm verify:web`（S0-B/S1 渲染、存储、提交状态与导出视图）。前端套件是 **Docker 内可复跑的 DOM-less 渲染/存储逻辑验证**，不等同于真实浏览器 E2E；如仓库提供 host-side 浏览器冒烟脚本，需单独运行并明确其宿主依赖。输出写入 `.runtime/test-artifacts/`。
 
 ```sh
 sh scripts/verify-backend.sh
 ```
 
-该命令不是浏览器 E2E 验收；前端 S0-B 与 S1 草稿/稳定提交仍由对应任务交付。当前技术实现与保留理由见 [ADR 0001](docs/adr/0001-current-implementation.md)。
+`verify-all.sh` 的 HTTP 部分只检查未登录页面与边界；登录后的真实浏览器交互仍需独立 E2E。当前技术实现、验证策略与导出/恢复取舍见 [ADR 0001](docs/adr/0001-current-implementation.md) 与 [ADR 0002](docs/adr/0002-minimal-export-restore.md)。
 
 ```sh
 docker compose run --rm tools corepack pnpm typecheck
@@ -106,14 +123,16 @@ sh scripts/verify-persistence.sh
 | `packages/ai` | T2/T3 模型适配层（默认 mock）、蓝图解析/校验/应用与批次撤销 |
 | `packages/contracts` | Zod 请求定义、导出 JSON Schema/OpenAPI、前端接入说明 |
 | `packages/domain` | 纯规则：校验、精确统计、时区窗口、任务验收 |
-| `packages/db` | node-postgres/Drizzle 连接、编号 SQL 迁移与无事实种子 |
+| `packages/db` | node-postgres/Drizzle 连接、编号 SQL 迁移、无事实种子、用户数据导出/恢复（`backup.ts`） |
 | `scripts/build-web.mjs` | 用 TypeScript compiler API 构建 `packages/ui/dist` 与 `apps/web/dist`（含 import 改写） |
+| `apps/web/scripts/verify-web.ts` | Docker 内可复跑的 S0-B/S1 前端验证（渲染、存储、提交状态、导出视图） |
+| `scripts/export-data.ts` / `restore-data.ts` | 手工导出与隔离恢复 CLI |
 | `infra/gateway/Caddyfile` | 统一入口：`/api`、`/health` 到 api，其余到 web |
 | `.runtime/cache` | pnpm/Corepack/npm/Caddy/浏览器等项目可控缓存 |
 | `.runtime/tmp` | tsx、项目临时文件 |
 | `.runtime/data/postgres` | PostgreSQL 18 真实持久数据，容器挂 `/var/lib/postgresql` |
 | `.runtime/data/uploads` | 附件预留目录，上传 API 尚未实现 |
-| `.runtime/backups` | 备份预留目录，恢复流程待 T5 |
+| `.runtime/backups` | 手工导出/恢复文件目录（默认 0600，被 gitignore） |
 | `.runtime/test-artifacts` | 验收产物和持久化探针标识 |
 | `.secrets` | 本地服务端私密配置 |
 
@@ -125,8 +144,8 @@ API 当前输出到容器标准输出，使用 `docker compose logs api` 查看�
 
 前端与统一入口已接入：`http://localhost:18080/` 与五个面板路由均由同一 Caddy 入口提供，`/dist/app.js`、`/packages/ui/dist/index.js` 来自源码构建的 dist（gitignored）。当前接口只保证小规模本地开发；列表虽然分页，内部仍读取一致性快照，后续需按数据规模改为 SQL 分页。
 
-T2 剩余：完整配置编辑/模板迁移与依赖迁移工具、周期模板调度与实例生成（当前蓝图中的 `daily/weekly` 任务会被明确拒绝）、更多周期成就配置入口。T3 剩余：真实 DeepSeek 账号联调与模型能力/费用实测、异步 worker 与排队恢复、真实失败重试的模型侧兼容验证；已交付适配器隔离、五层校验、原子应用、幂等、重试/取消与撤销。T4：Better Auth 正式账号/设备会话、离线 outbox、同步 push/pull/ack、手机可信 HTTPS。T5：pg-boss worker、日报周报、备份恢复演练与发布验收。
+S1 剩余：IndexedDB outbox/设备同步（S2）、真实浏览器自动化的固定数据环境与 CI 运行、恢复后的自动一致性巡检。T2 剩余：完整配置编辑/模板迁移与依赖迁移工具、周期模板调度与实例生成（当前蓝图中的 `daily/weekly` 任务会被明确拒绝）、更多周期成就配置入口。T3 剩余：真实 DeepSeek 账号联调与模型能力/费用实测、异步 worker 与排队恢复、真实失败重试的模型侧兼容验证；已交付适配器隔离、五层校验、原子应用、幂等、重试/取消与撤销。T4：Better Auth 正式账号/设备会话、离线 outbox、同步 push/pull/ack、手机可信 HTTPS。T5：pg-boss worker、日报周报、自动备份恢复演练与发布验收。
 
-AI 生成只写配置定义（记录模板、数值、unscheduled/once 任务、一次性或按周期成就），从不写入真实记录、当前数值、完成状态或成就解锁；模型输出中的这些字段会被严格拒绝。批次撤销不会级联删除真实记录。`/capabilities` 如实返回未实现能力为 false；`cloud_ai` 只在真实 DeepSeek 已配置时为 true。当前本地登录入口只供开发；未采用 Better Auth，不可据此宣称满足正式多设备鉴权。本轮 T2/T3 交付日志：`log/2026-10-19_deepseek_T2-T3-ai.md`。
+AI 生成只写配置定义（记录模板、数值、unscheduled/once 任务、一次性或按周期成就），从不写入真实记录、当前数值、完成状态或成就解锁；模型输出中的这些字段会被严格拒绝。批次撤销不会级联删除真实记录。`/capabilities` 如实返回未实现能力为 false；`cloud_ai` 只在真实 DeepSeek 已配置时为 true。当前本地登录入口只供开发；未采用 Better Auth，不可据此宣称满足正式多设备鉴权。上一轮 T2/T3 交付日志：`log/2026-10-19_deepseek_T2-T3-ai.md`；S0/S1 收口日志：`log/2026-10-19_deepseek_S1-integration.md`。
 
 实施核对资料：[Fastify](https://fastify.dev/docs/latest/Reference/Server/)、[Drizzle](https://orm.drizzle.team/docs/get-started-postgresql)、[PostgreSQL 官方镜像](https://hub.docker.com/_/postgres)。阶段日志在项目根目录 `log/`。

@@ -3,23 +3,51 @@
 import {
   DASHBOARD_STYLES,
   escapeHtml,
-  renderIcon
+  renderIcon,
+  SUBMISSION_STATE_META
 } from '../../../packages/ui/src/index.js';
-import { api, ApiClientError, generateUuid } from './api.js';
+import { api, ApiClientError, generateUuid, isUnknownNetworkError } from './api.js';
+import {
+  assertUserExportPayload,
+  buildExportFilename,
+  ExportPayloadError,
+  serializeUserExport,
+  summarizeUserExport
+} from './export.js';
+import {
+  bindDynamicModalControllers,
+  captureActiveFormSnapshot,
+  extractRecordFormDraft,
+  restoreActiveFormSnapshot
+} from './forms.js';
+import { renderActiveModal } from './modals.js';
 import {
   renderAchievementsPanel,
-  renderActiveModal,
   renderMetricsPanel,
   renderRecordsPanel,
   renderSettingsPanel,
   renderTasksPanel
 } from './panels.js';
 import {
+  createInitialRecordFormState,
   createInitialState,
   parseRouteFromLocation,
   routeToPanelKey,
   type AppState
 } from './state.js';
+import {
+  buildRecordDraftKey,
+  clearPendingMutation,
+  clearRecordDraft,
+  computePayloadSignature,
+  getPendingMutation,
+  loadRecordDraft,
+  loadUiPreferences,
+  prepareRecordMutationEnvelope,
+  savePendingMutation,
+  saveRecordDraft,
+  saveUiPreferences
+} from './storage.js';
 import type {
   AiApplyMode,
   AiBatchRow,
@@ -29,10 +57,45 @@ import type {
   AiMode,
   Field,
   PanelKey,
-  PanelRoute
+  PanelRoute,
+  RecordInput
 } from './types.js';
 
 const state: AppState = createInitialState();
+
+function persistUiState(): void {
+  saveUiPreferences({
+    theme: state.theme,
+    reducedMotion: state.reducedMotion,
+    unlockToastEnabled: state.unlockToastEnabled,
+    showInactiveModulesInFilter: state.showInactiveModulesInFilter,
+    panels: state.panels,
+    returnContext: state.returnContext
+  });
+}
+
+function hydrateUiStateFromStorage(): void {
+  const saved = loadUiPreferences();
+  if (!saved) return;
+  if (saved.theme === 'dark' || saved.theme === 'light') state.theme = saved.theme;
+  if (typeof saved.reducedMotion === 'boolean') state.reducedMotion = saved.reducedMotion;
+  if (typeof saved.unlockToastEnabled === 'boolean') {
+    state.unlockToastEnabled = saved.unlockToastEnabled;
+  }
+  if (typeof saved.showInactiveModulesInFilter === 'boolean') {
+    state.showInactiveModulesInFilter = saved.showInactiveModulesInFilter;
+  }
+  if (saved.panels) {
+    for (const k of ['tasks', 'metrics', 'achievements', 'records', 'settings'] as const) {
+      if (saved.panels[k]) {
+        state.panels[k] = { ...state.panels[k], ...saved.panels[k] };
+      }
+    }
+  }
+  if (saved.returnContext) {
+    state.returnContext = saved.returnContext;
+  }
+}
 
 function ensureStylesMounted(): void {
   if (!document.getElementById('ld-dashboard-styles')) {
@@ -51,6 +114,86 @@ function syncThemeAttributes(): void {
   );
 }
 
+function renderToastsHtml(): string {
+  if (state.toasts.length === 0) return '';
+  return `<div class="ld-toast-container" aria-live="polite">
+    ${state.toasts
+      .map(
+        t => `<div class="ld-toast ${t.kind === 'unlock' ? 'is-unlock' : ''}">
+          <div style="font-weight:700;margin-bottom:2px;">${escapeHtml(t.title)}</div>
+          <div style="color:var(--ld-text-secondary);">${escapeHtml(t.message)}</div>
+        </div>`
+      )
+      .join('')}
+  </div>`;
+}
+
+/**
+ * Region-scoped toast update: never re-renders the main panel or active modal,
+ * preventing any loss of unsaved form input when toasts appear or expire.
+ */
+function renderToastsOnly(): void {
+  const layer = document.getElementById('ld-toast-layer');
+  if (layer) {
+    layer.innerHTML = renderToastsHtml();
+  }
+}
+
+/**
+ * Updates only the S1 submission status bar inside the active record form modal
+ * without re-rendering form inputs.
+ */
+function updateRecordStatusBarOnly(): void {
+  const bar = document.querySelector('#ld-form-record .ld-draft-status-bar');
+  if (!bar) return;
+  const rf = state.recordForm;
+  const meta = SUBMISSION_STATE_META[rf.submissionStatus] ?? SUBMISSION_STATE_META.idle;
+  const badgeClass =
+    meta.tone === 'success'
+      ? 'ld-badge-success'
+      : meta.tone === 'warning'
+        ? 'ld-badge-warning'
+        : meta.tone === 'danger'
+          ? 'ld-badge-danger'
+          : meta.tone === 'info'
+            ? 'ld-badge-info'
+            : '';
+  bar.setAttribute('data-submission-status', rf.submissionStatus);
+  bar.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span class="ld-badge ${badgeClass}">${escapeHtml(meta.label)}</span>
+      <span style="color:var(--ld-text-secondary);">${escapeHtml(meta.description)}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      ${
+        rf.operationId
+          ? `<code style="font-size:11px;color:var(--ld-text-muted);">operation_id: ${escapeHtml(rf.operationId.slice(0, 12))}…</code>`
+          : ''
+      }
+      ${
+        rf.restoredFromStorage || rf.submissionStatus === 'saved_local' || rf.submissionStatus === 'unknown_network'
+          ? `<button type="button" class="ld-btn ld-btn-sm" data-action="discard-record-draft">丢弃本地草稿</button>`
+          : ''
+      }
+    </div>
+  `;
+}
+
+export function renderModalRegionOnly(preserveInput = false): void {
+  const modalLayer = document.getElementById('ld-modal-layer');
+  if (!modalLayer || !state.bootstrap) return;
+  const snapshot = preserveInput ? captureActiveFormSnapshot() : null;
+  modalLayer.innerHTML = renderActiveModal(state, state.bootstrap);
+  if (snapshot) {
+    restoreActiveFormSnapshot(snapshot);
+  }
+  bindDynamicModalControllers(
+    state,
+    () => renderModalRegionOnly(false),
+    () => updateRecordStatusBarOnly()
+  );
+}
+
 function pushToast(
   title: string,
   message: string,
@@ -58,11 +201,74 @@ function pushToast(
 ): void {
   const id = generateUuid();
   state.toasts.push({ id, title, message, kind });
-  renderApp();
+  renderToastsOnly();
   window.setTimeout(() => {
     state.toasts = state.toasts.filter(t => t.id !== id);
-    renderApp();
+    renderToastsOnly();
   }, 4200);
+}
+
+/**
+ * S1 minimal export: hands the server export envelope to the browser as a file.
+ * The JSON text is never stored in localStorage, never logged, and contains no
+ * session/credential material — only the whitelisted user data tables.
+ */
+function downloadTextFile(fileName: string, text: string): void {
+  const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.rel = 'noopener';
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function exportUserData(): Promise<void> {
+  if (state.exportUi.status === 'exporting') return;
+  state.exportUi = {
+    status: 'exporting',
+    message: '正在从服务器读取完整数据快照（只读 GET /api/v1/export）…',
+    fileName: null
+  };
+  renderApp({ preserveModalInput: true });
+  try {
+    const payload = assertUserExportPayload(await api.exportUserData());
+    const fileName = buildExportFilename(
+      payload.exported_at,
+      payload.user?.timezone ?? state.user?.timezone
+    );
+    downloadTextFile(fileName, serializeUserExport(payload));
+    const summary = summarizeUserExport(payload);
+    state.exportUi = {
+      status: 'success',
+      message: `已下载 ${summary.table_count} 张表 / ${summary.row_count} 行数据；服务端校验和 ${payload.checksum.slice(0, 12)}…`,
+      fileName
+    };
+    renderApp({ preserveModalInput: true });
+    pushToast('数据导出成功', `已保存 ${fileName}；该文件可用于离线备份与 CLI 恢复`, 'success');
+  } catch (err) {
+    if (err instanceof ApiClientError && err.status === 401) {
+      state.authStatus = 'unauthenticated';
+      state.user = null;
+      state.bootstrap = null;
+      state.loginError = '会话已过期或未登录，请重新输入本地登录口令。';
+      state.exportUi = { status: 'error', message: '导出失败：会话已过期，请重新登录', fileName: null };
+      renderApp();
+      return;
+    }
+    const desc = describeApiError(err);
+    state.exportUi = {
+      status: 'error',
+      message: `导出失败：${desc.message}`,
+      fileName: null
+    };
+    renderApp({ preserveModalInput: true });
+    pushToast(`导出失败${desc.code ? ` (${desc.code})` : ''}`, desc.message, 'warning');
+  }
 }
 
 function saveCurrentScroll(): void {
@@ -70,6 +276,50 @@ function saveCurrentScroll(): void {
   if (key) {
     state.panels[key].scrollY = window.scrollY || 0;
   }
+}
+
+function prepareRecordFormModal(params: {
+  mode: 'create' | 'edit';
+  recordId?: string;
+  defaultModuleId: string;
+  defaultRecordTypeId: string;
+  defaultTaskIds: string[];
+  fromTaskId?: string;
+}): void {
+  const draftKey = buildRecordDraftKey({
+    mode: params.mode,
+    recordId: params.recordId,
+    moduleId: params.defaultModuleId,
+    recordTypeId: params.defaultRecordTypeId,
+    fromTaskId: params.fromTaskId
+  });
+  const savedDraft = loadRecordDraft(draftKey);
+  const pendingOp = getPendingMutation(draftKey);
+
+  state.recordForm = {
+    draftKey,
+    submissionStatus: pendingOp
+      ? 'unknown_network'
+      : savedDraft
+        ? 'saved_local'
+        : 'idle',
+    operationId: pendingOp ? pendingOp.operationId : null,
+    recordId:
+      params.recordId ??
+      pendingOp?.recordId ??
+      savedDraft?.recordId ??
+      generateUuid(),
+    restoredFromStorage: Boolean(savedDraft || pendingOp),
+    lastSavedLocalAt: savedDraft?.updatedAt ?? null,
+    conflictError: null,
+    conflictServerRecord: null,
+    validationError: null
+  };
+  state.modalError = null;
+  state.activeModal = {
+    kind: 'record-form',
+    ...params
+  };
 }
 
 function navigateTo(
@@ -82,6 +332,7 @@ function navigateTo(
   }
   state.route = route;
   state.error = null;
+  persistUiState();
   if (options.pushHistory !== false && window.location.pathname !== route) {
     window.history.pushState({ route }, '', route);
   }
@@ -98,7 +349,7 @@ function renderLoginScreen(): string {
         <span class="ld-brand-emblem">L</span>
         <div>
           <h1 style="margin:0;font-size:18px;font-weight:700;">人生面板 Life Dashboard</h1>
-          <div style="font-size:12px;color:var(--ld-text-secondary);">v0.1 本地开发会话入口 (${escapeHtml(state.capabilities?.stage ?? 'T0/T1')})</div>
+          <div style="font-size:12px;color:var(--ld-text-secondary);">v0.1 本地开发会话入口 (${escapeHtml(state.capabilities?.stage ?? 'T2/T3-ai')})</div>
         </div>
       </div>
       <p style="margin:0;font-size:13px;color:var(--ld-text-secondary);line-height:1.6;">
@@ -138,7 +389,7 @@ function renderShellAndMain(): string {
       label: '任务面板',
       shortLabel: '任务',
       icon: 'flag',
-      count: data ? data.tasks.filter(t => t.status !== 'completed').length : undefined,
+      count: data ? data.tasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length : undefined,
       warning: data ? data.tasks.some(t => t.needs_review) : false
     },
     {
@@ -183,7 +434,6 @@ function renderShellAndMain(): string {
   let mainContentHtml = '';
   if (state.route === '/') {
     // P01 & Section 2.2: Logged-in Home page main content area is strictly blank!
-    // No welcome text, no summary cards, no today tasks, no metrics overview, no AI chat, no placeholder text, no auto-redirect.
     mainContentHtml = `<main class="ld-main ld-home-blank" id="ld-home-blank" aria-label="首页"></main>`;
   } else if (!data) {
     mainContentHtml = `<main class="ld-main"><div class="ld-panel-container"><div class="ld-card">正在加载面板数据...</div></div></main>`;
@@ -198,20 +448,6 @@ function renderShellAndMain(): string {
   } else if (state.route === '/settings') {
     mainContentHtml = `<main class="ld-main">${renderSettingsPanel(state, data)}</main>`;
   }
-
-  const toastsHtml =
-    state.toasts.length > 0
-      ? `<div class="ld-toast-container" aria-live="polite">
-          ${state.toasts
-            .map(
-              t => `<div class="ld-toast ${t.kind === 'unlock' ? 'is-unlock' : ''}">
-                <div style="font-weight:700;margin-bottom:2px;">${escapeHtml(t.title)}</div>
-                <div style="color:var(--ld-text-secondary);">${escapeHtml(t.message)}</div>
-              </div>`
-            )
-            .join('')}
-        </div>`
-      : '';
 
   return `<div class="ld-app-shell">
     <aside class="ld-sidebar" aria-label="主导航">
@@ -256,7 +492,9 @@ function renderShellAndMain(): string {
       <button type="button" class="ld-btn ld-btn-sm" data-action="toggle-theme">${state.theme === 'dark' ? '🌙' : '☀️'}</button>
     </header>
 
-    ${mainContentHtml}
+    <div id="ld-main-region" style="flex:1;min-width:0;display:flex;flex-direction:column;">
+      ${mainContentHtml}
+    </div>
 
     <nav class="ld-mobile-dock" aria-label="移动端五面板导航">
       ${navItems
@@ -268,12 +506,12 @@ function renderShellAndMain(): string {
         )
         .join('')}
     </nav>
-    ${data ? renderActiveModal(state, data) : ''}
-    ${toastsHtml}
+    <div id="ld-modal-layer">${data ? renderActiveModal(state, data) : ''}</div>
+    <div id="ld-toast-layer">${renderToastsHtml()}</div>
   </div>`;
 }
 
-export function renderApp(): void {
+export function renderApp(options: { preserveModalInput?: boolean } = {}): void {
   ensureStylesMounted();
   syncThemeAttributes();
   const root = document.getElementById('app');
@@ -289,206 +527,22 @@ export function renderApp(): void {
     return;
   }
 
+  const snapshot = options.preserveModalInput ? captureActiveFormSnapshot() : null;
   root.innerHTML = renderShellAndMain();
-  bindDynamicModalSelectListeners();
-}
-
-function bindDynamicModalSelectListeners(): void {
-  const data = state.bootstrap;
-  if (!data) return;
-
-  // Create Task modal dynamic interactions
-  const taskModSelect = document.getElementById('ld-task-module-select') as HTMLSelectElement | null;
-  const taskModeSelect = document.getElementById('ld-task-mode-select') as HTMLSelectElement | null;
-  const taskTplSelect = document.getElementById('ld-task-template-select') as HTMLSelectElement | null;
-  const taskAccKind = document.getElementById('ld-task-acceptance-kind') as HTMLSelectElement | null;
-  const taskFieldSelect = document.getElementById('ld-task-field-select') as HTMLSelectElement | null;
-  const taskBindingGroup = document.getElementById('ld-task-binding-group');
-  const taskThresholdGroup = document.getElementById('ld-task-threshold-group');
-
-  const syncTaskFormVisibility = () => {
-    if (!taskModeSelect || !taskBindingGroup || !taskAccKind || !taskThresholdGroup) return;
-    const isManual = taskModeSelect.value === 'manual';
-    taskBindingGroup.style.display = isManual ? 'none' : 'flex';
-    taskThresholdGroup.style.display =
-      !isManual && taskAccKind.value === 'field_gte' ? 'grid' : 'none';
-  };
-
-  const syncTaskNumericFields = (tplId: string) => {
-    if (!taskFieldSelect || !taskAccKind) return;
-    const tpl = data.record_types.find(rt => rt.id === tplId);
-    const numFields = (tpl?.fields ?? []).filter(f => ['integer', 'decimal'].includes(f.type));
-    taskFieldSelect.innerHTML = numFields
-      .map(
-        f =>
-          `<option value="${escapeHtml(f.key)}">${escapeHtml(f.label)} (${escapeHtml(f.key)}${f.unit ? ` / ${escapeHtml(f.unit)}` : ''})</option>`
-      )
-      .join('');
-    const fieldGteOpt = taskAccKind.querySelector('option[value="field_gte"]') as HTMLOptionElement | null;
-    if (fieldGteOpt) {
-      fieldGteOpt.disabled = numFields.length === 0;
-      if (numFields.length === 0 && taskAccKind.value === 'field_gte') {
-        taskAccKind.value = 'exists';
-      }
-    }
-    syncTaskFormVisibility();
-  };
-
-  if (taskModSelect && taskTplSelect) {
-    taskModSelect.onchange = () => {
-      const templates = data.record_types.filter(rt => rt.module_id === taskModSelect.value);
-      taskTplSelect.innerHTML = templates
-        .map(rt => `<option value="${escapeHtml(rt.id)}">${escapeHtml(rt.name)}</option>`)
-        .join('');
-      syncTaskNumericFields(templates[0]?.id ?? '');
-    };
+  if (snapshot) {
+    restoreActiveFormSnapshot(snapshot);
   }
-  if (taskTplSelect) {
-    taskTplSelect.onchange = () => syncTaskNumericFields(taskTplSelect.value);
-  }
-  if (taskModeSelect) taskModeSelect.onchange = syncTaskFormVisibility;
-  if (taskAccKind) taskAccKind.onchange = syncTaskFormVisibility;
-
-  // Record Form modal module/template switch
-  const recModSelect = document.getElementById('ld-record-module-select') as HTMLSelectElement | null;
-  const recTplSelect = document.getElementById('ld-record-template-select') as HTMLSelectElement | null;
-  if (recModSelect && state.activeModal?.kind === 'record-form' && state.activeModal.mode === 'create') {
-    recModSelect.onchange = () => {
-      if (state.activeModal?.kind !== 'record-form') return;
-      const firstTpl = data.record_types.find(rt => rt.module_id === recModSelect.value);
-      state.activeModal.defaultModuleId = recModSelect.value;
-      state.activeModal.defaultRecordTypeId = firstTpl?.id ?? '';
-      state.activeModal.defaultTaskIds = [];
-      renderApp();
-    };
-  }
-  if (recTplSelect && state.activeModal?.kind === 'record-form' && state.activeModal.mode === 'create') {
-    recTplSelect.onchange = () => {
-      if (state.activeModal?.kind !== 'record-form') return;
-      state.activeModal.defaultRecordTypeId = recTplSelect.value;
-      state.activeModal.defaultTaskIds = [];
-      renderApp();
-    };
-  }
-
-  // Create Metric modal dynamic interactions
-  const metricModSelect = document.getElementById('ld-metric-module-select') as HTMLSelectElement | null;
-  const metricTplSelect = document.getElementById('ld-metric-template-select') as HTMLSelectElement | null;
-  const metricAggSelect = document.getElementById('ld-metric-agg-select') as HTMLSelectElement | null;
-  const metricFieldGroup = document.getElementById('ld-metric-field-group');
-  const metricFieldSelect = document.getElementById('ld-metric-field-select') as HTMLSelectElement | null;
-  const metricUnitInput = document.getElementById('ld-metric-unit-input') as HTMLInputElement | null;
-
-  const syncMetricFields = () => {
-    if (!metricTplSelect || !metricAggSelect || !metricFieldGroup || !metricFieldSelect || !metricUnitInput) return;
-    const tpl = data.record_types.find(rt => rt.id === metricTplSelect.value);
-    const numFields = (tpl?.fields ?? []).filter(f => ['integer', 'decimal'].includes(f.type));
-    const isCount = metricAggSelect.value === 'count';
-    metricFieldGroup.style.display = isCount ? 'none' : 'flex';
-    if (!isCount && numFields.length > 0) {
-      const selectedField = numFields.find(f => f.key === metricFieldSelect.value) ?? numFields[0];
-      if (selectedField?.unit) {
-        metricUnitInput.value = selectedField.unit;
-      }
-    } else if (isCount && (!metricUnitInput.value || metricUnitInput.value === '分钟')) {
-      metricUnitInput.value = '次';
-    }
-  };
-
-  if (metricModSelect && metricTplSelect && metricFieldSelect && metricAggSelect) {
-    metricModSelect.onchange = () => {
-      const templates = data.record_types.filter(rt => rt.module_id === metricModSelect.value);
-      metricTplSelect.innerHTML = templates
-        .map(rt => `<option value="${escapeHtml(rt.id)}">${escapeHtml(rt.name)}</option>`)
-        .join('');
-      const firstTpl = templates[0];
-      const numFields = (firstTpl?.fields ?? []).filter(f => ['integer', 'decimal'].includes(f.type));
-      metricFieldSelect.innerHTML = numFields
-        .map(
-          f =>
-            `<option value="${escapeHtml(f.key)}" data-unit="${escapeHtml(f.unit ?? '')}">${escapeHtml(f.label)} (${escapeHtml(f.key)}${f.unit ? ` / 单位:${escapeHtml(f.unit)}` : ''})</option>`
-        )
-        .join('');
-      for (const agg of ['sum', 'avg', 'latest']) {
-        const opt = metricAggSelect.querySelector(`option[value="${agg}"]`) as HTMLOptionElement | null;
-        if (opt) opt.disabled = numFields.length === 0;
-      }
-      if (numFields.length === 0) metricAggSelect.value = 'count';
-      syncMetricFields();
-    };
-  }
-  if (metricTplSelect) metricTplSelect.onchange = syncMetricFields;
-  if (metricAggSelect) metricAggSelect.onchange = syncMetricFields;
-  if (metricFieldSelect) metricFieldSelect.onchange = syncMetricFields;
-
-  // Create Achievement modal module -> metric cascade
-  const achModSelect = document.getElementById('ld-ach-module-select') as HTMLSelectElement | null;
-  const achMetricSelect = document.getElementById('ld-ach-metric-select') as HTMLSelectElement | null;
-  if (achModSelect && achMetricSelect) {
-    achModSelect.onchange = () => {
-      const metrics = data.metrics.filter(m => m.module_id === achModSelect.value);
-      achMetricSelect.innerHTML =
-        metrics.length === 0
-          ? `<option value="">当前模块暂无数值定义，请先创建数值</option>`
-          : metrics
-              .map(
-                m =>
-                  `<option value="${escapeHtml(m.id)}">${escapeHtml(m.definition.name)} (${escapeHtml(m.definition.unit)})</option>`
-              )
-              .join('');
-    };
-  }
-
-  // AI generation modal: mode-dependent groups and per-module reference allowlists.
-  if (state.activeModal?.kind === 'ai-generate') {
-    const aiModeSelect = document.getElementById('ld-ai-mode-select') as HTMLSelectElement | null;
-    const aiCreateFields = document.getElementById('ld-ai-create-fields');
-    const aiExtendFields = document.getElementById('ld-ai-extend-fields');
-    const syncAiModeFields = () => {
-      if (!aiModeSelect || !aiCreateFields || !aiExtendFields) return;
-      const isCreate = aiModeSelect.value === 'create';
-      aiCreateFields.style.display = isCreate ? 'grid' : 'none';
-      aiExtendFields.style.display = isCreate ? 'none' : 'grid';
-    };
-    if (aiModeSelect) aiModeSelect.onchange = syncAiModeFields;
-    syncAiModeFields();
-
-    const aiModSelect = document.getElementById('ld-ai-module-select') as HTMLSelectElement | null;
-    const aiRefRecordTypes = document.getElementById('ai-ref-record-types') as HTMLSelectElement | null;
-    const aiRefMetrics = document.getElementById('ai-ref-metrics') as HTMLSelectElement | null;
-    if (aiModSelect) {
-      aiModSelect.onchange = () => {
-        const templates = data.record_types.filter(rt => rt.module_id === aiModSelect.value);
-        const metrics = data.metrics.filter(m => m.module_id === aiModSelect.value);
-        if (aiRefRecordTypes) {
-          aiRefRecordTypes.innerHTML =
-            templates.length === 0
-              ? '<option value="" disabled>当前模块暂无可引用对象</option>'
-              : templates
-                  .map(rt => `<option value="${escapeHtml(rt.id)}">${escapeHtml(rt.name)}</option>`)
-                  .join('');
-          aiRefRecordTypes.disabled = templates.length === 0;
-        }
-        if (aiRefMetrics) {
-          aiRefMetrics.innerHTML =
-            metrics.length === 0
-              ? '<option value="" disabled>当前模块暂无可引用对象</option>'
-              : metrics
-                  .map(
-                    m =>
-                      `<option value="${escapeHtml(m.id)}">${escapeHtml(m.definition.name)} (${escapeHtml(m.definition.unit)})</option>`
-                  )
-                  .join('');
-          aiRefMetrics.disabled = metrics.length === 0;
-        }
-      };
-    }
-  }
+  bindDynamicModalControllers(
+    state,
+    () => renderModalRegionOnly(false),
+    () => updateRecordStatusBarOnly()
+  );
 }
 
 async function refreshBootstrapAndNotify(
   actionSummary?: string,
-  checkUnlocks = false
+  checkUnlocks = false,
+  preserveModalInput = false
 ): Promise<void> {
   const prevUnlockedIds = new Set(
     (state.bootstrap?.achievement_awards ?? [])
@@ -499,8 +553,10 @@ async function refreshBootstrapAndNotify(
   state.bootstrap = fresh;
   state.error = null;
 
+  renderApp({ preserveModalInput });
+
   if (actionSummary) {
-    pushToast('操作成功', actionSummary, 'success');
+    pushToast('服务器已确认', actionSummary, 'success');
   }
 
   if (checkUnlocks && state.unlockToastEnabled) {
@@ -515,16 +571,30 @@ async function refreshBootstrapAndNotify(
       }
     }
   }
-
-  renderApp();
 }
 
-function handleApiError(err: unknown): void {
+function handleApiError(err: unknown, options: { insideModal?: boolean } = {}): void {
   if (err instanceof ApiClientError) {
     if (err.status === 401) {
       state.authStatus = 'unauthenticated';
       state.loginError = '会话已过期或未登录，请重新输入本地登录口令。';
       renderApp();
+      return;
+    }
+    if (options.insideModal && state.activeModal) {
+      if (err.status === 409) {
+        state.modalError = {
+          code: err.code,
+          message: err.message
+        };
+      }
+      state.error = {
+        code: err.code,
+        message: err.message,
+        requestId: err.requestId
+      };
+      renderModalRegionOnly(true);
+      pushToast(`请求冲突/错误 (${err.code})`, err.message, 'warning');
       return;
     }
     state.error = {
@@ -539,16 +609,12 @@ function handleApiError(err: unknown): void {
       message: err instanceof Error ? err.message : '网络请求异常'
     };
   }
-  renderApp();
+  renderApp({ preserveModalInput: true });
 }
-
-// ---------------------------------------------------------------------------
-// AI generation state helpers (T2/T3). Errors are always shown honestly; a
-// failed provider call or blueprint rejection is never turned into a fake success.
-// ---------------------------------------------------------------------------
 
 function describeApiError(err: unknown): { code?: string; message: string } {
   if (err instanceof ApiClientError) return { code: err.code, message: err.message };
+  if (err instanceof ExportPayloadError) return { code: err.code, message: err.message };
   return { code: 'NETWORK_ERROR', message: err instanceof Error ? err.message : '网络请求异常' };
 }
 
@@ -568,32 +634,39 @@ function extractAiJobId(details: unknown): string | null {
 async function loadAiConfig(): Promise<void> {
   state.ai.configLoading = true;
   state.ai.configError = null;
-  renderApp();
+  if (state.route === '/settings' || state.activeModal?.kind === 'ai-generate') {
+    renderApp({ preserveModalInput: true });
+  }
   try {
     state.ai.config = await api.getAiConfig();
   } catch (err) {
     state.ai.configError = describeApiError(err);
   } finally {
     state.ai.configLoading = false;
-    renderApp();
+    if (state.route === '/settings' || state.activeModal?.kind === 'ai-generate') {
+      renderApp({ preserveModalInput: true });
+    }
   }
 }
 
 async function loadAiJobs(): Promise<void> {
   state.ai.jobsLoading = true;
   state.ai.jobsError = null;
-  renderApp();
+  if (state.route === '/settings') {
+    renderApp({ preserveModalInput: true });
+  }
   try {
     state.ai.jobs = await api.listAiGenerations({ limit: 10 });
   } catch (err) {
     state.ai.jobsError = describeApiError(err);
   } finally {
     state.ai.jobsLoading = false;
-    renderApp();
+    if (state.route === '/settings') {
+      renderApp({ preserveModalInput: true });
+    }
   }
 }
 
-/** Refresh the job list without flashing the settings loading row. */
 async function refreshAiJobsQuietly(): Promise<void> {
   try {
     state.ai.jobs = await api.listAiGenerations({ limit: 10 });
@@ -650,7 +723,7 @@ async function runAiJobAction(
   const baseVersion = current && current.id === jobId ? current.target_base_version : null;
   state.ai.busy = true;
   state.ai.resultError = null;
-  renderApp();
+  renderModalRegionOnly(false);
   try {
     const envelope =
       action === 'apply'
@@ -665,13 +738,13 @@ async function runAiJobAction(
       await refreshBootstrapAndNotify(aiBatchToast(envelope.batch));
     } else if (action === 'cancel') {
       pushToast('候选已取消', '不会写入任何配置定义', 'info');
-      renderApp();
+      renderModalRegionOnly(false);
     } else if (action === 'retry') {
       pushToast('重新生成完成', aiJobToast(envelope.job), envelope.job.validation.valid ? 'info' : 'warning');
-      renderApp();
+      renderModalRegionOnly(false);
     } else {
       pushToast('候选已生成', aiJobToast(envelope.job), envelope.job.validation.valid ? 'info' : 'warning');
-      renderApp();
+      renderModalRegionOnly(false);
     }
   } catch (err) {
     state.ai.busy = false;
@@ -682,14 +755,14 @@ async function runAiJobAction(
         try {
           state.ai.result = await api.getAiGeneration(jobIdFromError);
         } catch {
-          // Keep the error banner; the server did not expose a readable job.
+          // Keep error banner
         }
       }
     } else {
       state.ai.resultError = describeApiError(err);
     }
     await refreshAiJobsQuietly();
-    renderApp();
+    renderModalRegionOnly(false);
   }
 }
 
@@ -697,7 +770,7 @@ async function runAiRevoke(batchId: string): Promise<void> {
   if (state.ai.busy) return;
   state.ai.busy = true;
   state.ai.resultError = null;
-  renderApp();
+  renderModalRegionOnly(false);
   try {
     const result = await api.revokeAiBatch(batchId);
     state.ai.busy = false;
@@ -715,13 +788,13 @@ async function runAiRevoke(batchId: string): Promise<void> {
     state.ai.busy = false;
     state.ai.resultError = describeApiError(err);
     await refreshAiJobsQuietly();
-    renderApp();
+    renderModalRegionOnly(false);
   }
 }
 
 async function initializeApp(): Promise<void> {
+  hydrateUiStateFromStorage();
   state.route = parseRouteFromLocation(window.location.pathname);
-  // Support optional module_id query parameter on direct panel entry (P02)
   const urlParams = new URLSearchParams(window.location.search);
   const queryModId = urlParams.get('module_id');
   const initialPanelKey = routeToPanelKey(state.route);
@@ -764,10 +837,12 @@ function setupEventDelegation(): void {
     if (action === 'filter-record-template') {
       const val = (target as HTMLSelectElement).value;
       state.panels.records.recordTemplateId = val || null;
+      persistUiState();
       renderApp();
     } else if (action === 'filter-record-status') {
       const val = (target as HTMLSelectElement).value as 'all' | 'confirmed' | 'draft';
       state.panels.records.recordStatus = val;
+      persistUiState();
       renderApp();
     }
   });
@@ -786,25 +861,29 @@ function setupEventDelegation(): void {
 
     if (action === 'toggle-theme') {
       state.theme = state.theme === 'dark' ? 'light' : 'dark';
-      renderApp();
+      persistUiState();
+      renderApp({ preserveModalInput: true });
       return;
     }
 
     if (action === 'toggle-reduced-motion') {
       state.reducedMotion = !state.reducedMotion;
-      renderApp();
+      persistUiState();
+      renderApp({ preserveModalInput: true });
       return;
     }
 
     if (action === 'toggle-unlock-toast') {
       state.unlockToastEnabled = !state.unlockToastEnabled;
-      renderApp();
+      persistUiState();
+      renderApp({ preserveModalInput: true });
       return;
     }
 
     if (action === 'toggle-inactive-modules') {
       state.showInactiveModulesInFilter = !state.showInactiveModulesInFilter;
-      renderApp();
+      persistUiState();
+      renderApp({ preserveModalInput: true });
       return;
     }
 
@@ -824,10 +903,15 @@ function setupEventDelegation(): void {
 
     if (action === 'refresh-bootstrap') {
       try {
-        await refreshBootstrapAndNotify('已同步最新服务端一致性快照');
+        await refreshBootstrapAndNotify('已同步最新服务端一致性快照', false, true);
       } catch (err) {
         handleApiError(err);
       }
+      return;
+    }
+
+    if (action === 'export-data') {
+      void exportUserData();
       return;
     }
 
@@ -835,11 +919,11 @@ function setupEventDelegation(): void {
       const modId = target.getAttribute('data-module-id') || null;
       const key = routeToPanelKey(state.route);
       if (key) {
-        // Section 2.3 & P03: Only change the current panel's module filter
         state.panels[key].moduleId = modId;
         if (key === 'records') {
           state.panels.records.recordTemplateId = null;
         }
+        persistUiState();
         renderApp();
       }
       return;
@@ -850,6 +934,7 @@ function setupEventDelegation(): void {
       const key = routeToPanelKey(state.route);
       if (key) {
         state.panels[key].subTab = subTab;
+        persistUiState();
         renderApp();
       }
       return;
@@ -857,6 +942,7 @@ function setupEventDelegation(): void {
 
     if (action === 'close-modal') {
       state.activeModal = null;
+      state.modalError = null;
       renderApp();
       return;
     }
@@ -864,7 +950,62 @@ function setupEventDelegation(): void {
     if (action === 'close-modal-backdrop') {
       if (e.target === target) {
         state.activeModal = null;
+        state.modalError = null;
         renderApp();
+      }
+      return;
+    }
+
+    if (action === 'discard-record-draft') {
+      const key = state.recordForm.draftKey;
+      if (key) {
+        clearRecordDraft(key);
+        clearPendingMutation(key);
+      }
+      state.recordForm = {
+        ...createInitialRecordFormState(),
+        draftKey: key,
+        recordId: generateUuid()
+      };
+      renderModalRegionOnly(false);
+      pushToast('本机草稿已丢弃', '已清空当前未提交的本地草稿与待重试状态', 'info');
+      return;
+    }
+
+    if (action === 'resume-latest-draft' && data) {
+      const draftKey = target.getAttribute('data-draft-key') ?? '';
+      const saved = loadRecordDraft(draftKey);
+      if (saved) {
+        prepareRecordFormModal({
+          mode: saved.mode,
+          recordId: saved.mode === 'edit' ? saved.recordId : undefined,
+          defaultModuleId: saved.moduleId,
+          defaultRecordTypeId: saved.recordTypeId,
+          defaultTaskIds: saved.taskIds,
+          fromTaskId: saved.fromTaskId
+        });
+        renderApp();
+      }
+      return;
+    }
+
+    if (action === 'conflict-pull-latest' && data) {
+      try {
+        const fresh = await api.getBootstrap();
+        state.bootstrap = fresh;
+        if (state.activeModal?.kind === 'record-form' && state.activeModal.recordId) {
+          const srv = fresh.records.find(r => r.id === state.activeModal?.kind && false) ??
+            fresh.records.find(r => r.id === (state.activeModal as { recordId?: string }).recordId);
+          state.recordForm.conflictServerRecord = srv ?? null;
+          if (srv) {
+            const form = document.getElementById('ld-form-record');
+            if (form) form.setAttribute('data-base-version', String(srv.version));
+          }
+        }
+        renderModalRegionOnly(true);
+        pushToast('已拉取服务器最新版本', '你可以核对服务器最新值后重新提交，或点击丢弃本地草稿', 'info');
+      } catch (err) {
+        handleApiError(err, { insideModal: true });
       }
       return;
     }
@@ -874,12 +1015,15 @@ function setupEventDelegation(): void {
       state.panels[ctx.fromPanelKey] = { ...ctx.savedFilter };
       state.returnContext = null;
       state.activeModal = null;
+      state.modalError = null;
+      persistUiState();
       navigateTo(ctx.fromRoute, { preserveReturnContext: false });
       return;
     }
 
     if (action === 'clear-return-context') {
       state.returnContext = null;
+      persistUiState();
       renderApp();
       return;
     }
@@ -887,14 +1031,15 @@ function setupEventDelegation(): void {
     if (action === 'clear-record-source-filter') {
       state.panels.records.sourceRecordIds = null;
       state.panels.records.sourceLabel = null;
+      persistUiState();
       renderApp();
       return;
     }
 
     if (!data) return;
 
-    // Open Modals
     if (action === 'open-create-task') {
+      state.modalError = null;
       state.activeModal = {
         kind: 'create-task',
         defaultModuleId: state.panels.tasks.moduleId
@@ -904,13 +1049,12 @@ function setupEventDelegation(): void {
     }
 
     if (action === 'open-ai-modal') {
-      // Pre-fill the module filter of the current panel (or the panel that owns
-      // the button) so generation targets what the user is looking at.
       const sourcePanel = (target.getAttribute('data-ai-source-panel') ??
         routeToPanelKey(state.route)) as PanelKey | null;
       const panelModuleId = sourcePanel ? state.panels[sourcePanel]?.moduleId ?? null : null;
       state.ai.result = null;
       state.ai.resultError = null;
+      state.modalError = null;
       state.activeModal = {
         kind: 'ai-generate',
         moduleId: panelModuleId
@@ -975,16 +1119,17 @@ function setupEventDelegation(): void {
     if (action === 'open-task-detail') {
       const taskId = target.getAttribute('data-task-id') ?? '';
       state.panels.tasks.selectedId = taskId;
+      state.modalError = null;
       state.activeModal = { kind: 'task-detail', taskId };
+      persistUiState();
       renderApp();
       return;
     }
 
-    // Section 4.4 & P04: Task -> Record jump carrying module, template, task instance, return context
     if (action === 'task-go-record') {
       const taskId = target.getAttribute('data-task-id') ?? '';
       const task = data.tasks.find(t => t.id === taskId);
-      if (!task) return;
+      if (!task || task.status === 'cancelled' || task.status === 'skipped') return;
       saveCurrentScroll();
       state.panels.tasks.selectedId = task.id;
       state.returnContext = {
@@ -998,14 +1143,13 @@ function setupEventDelegation(): void {
         data.record_types.find(rt => rt.module_id === task.module_id)?.id ??
         '';
       navigateTo('/records', { preserveReturnContext: true });
-      state.activeModal = {
-        kind: 'record-form',
+      prepareRecordFormModal({
         mode: 'create',
         defaultModuleId: task.module_id,
         defaultRecordTypeId: tplId,
         defaultTaskIds: [task.id],
         fromTaskId: task.id
-      };
+      });
       renderApp();
       return;
     }
@@ -1013,7 +1157,7 @@ function setupEventDelegation(): void {
     if (action === 'task-complete-manual') {
       const taskId = target.getAttribute('data-task-id') ?? '';
       const task = data.tasks.find(t => t.id === taskId);
-      if (!task) return;
+      if (!task || task.status === 'cancelled' || task.status === 'skipped') return;
       try {
         await api.completeTask(task.id, task.version);
         await refreshBootstrapAndNotify(`已将任务「${task.definition.title}」标记为完成`);
@@ -1050,13 +1194,12 @@ function setupEventDelegation(): void {
         state.panels.records.recordTemplateId ??
         data.record_types.find(rt => rt.module_id === modId)?.id ??
         '';
-      state.activeModal = {
-        kind: 'record-form',
+      prepareRecordFormModal({
         mode: 'create',
         defaultModuleId: modId,
         defaultRecordTypeId: tplId,
         defaultTaskIds: []
-      };
+      });
       renderApp();
       return;
     }
@@ -1066,14 +1209,13 @@ function setupEventDelegation(): void {
       const rec = data.records.find(r => r.id === recordId);
       if (!rec) return;
       state.panels.records.selectedId = recordId;
-      state.activeModal = {
-        kind: 'record-form',
+      prepareRecordFormModal({
         mode: 'edit',
         recordId: rec.id,
         defaultModuleId: rec.module_id,
         defaultRecordTypeId: rec.record_type_id,
         defaultTaskIds: rec.task_ids
-      };
+      });
       renderApp();
       return;
     }
@@ -1081,6 +1223,7 @@ function setupEventDelegation(): void {
     if (action === 'open-record-detail') {
       const recordId = target.getAttribute('data-record-id') ?? '';
       state.panels.records.selectedId = recordId;
+      state.modalError = null;
       state.activeModal = { kind: 'record-detail', recordId };
       renderApp();
       return;
@@ -1089,15 +1232,21 @@ function setupEventDelegation(): void {
     if (action === 'delete-record') {
       const recordId = target.getAttribute('data-record-id') ?? '';
       const rec = data.records.find(r => r.id === recordId);
-      if (!rec) return;
+      if (!rec || state.submittingModal) return;
+      state.submittingModal = true;
+      renderModalRegionOnly(false);
       try {
         await api.deleteRecord(rec.id, rec.version);
+        state.submittingModal = false;
         state.activeModal = null;
+        clearRecordDraft(`edit:${rec.id}`);
+        clearPendingMutation(`edit:${rec.id}`);
         await refreshBootstrapAndNotify(
           '记录已软删除，关联任务与成就已重新评估（失去唯一证据项已标为待复核）'
         );
       } catch (err) {
-        handleApiError(err);
+        state.submittingModal = false;
+        handleApiError(err, { insideModal: true });
       }
       return;
     }
@@ -1119,6 +1268,7 @@ function setupEventDelegation(): void {
     }
 
     if (action === 'open-create-metric') {
+      state.modalError = null;
       state.activeModal = {
         kind: 'create-metric',
         defaultModuleId: state.panels.metrics.moduleId
@@ -1130,6 +1280,7 @@ function setupEventDelegation(): void {
     if (action === 'open-metric-detail') {
       const metricId = target.getAttribute('data-metric-id') ?? '';
       state.panels.metrics.selectedId = metricId;
+      state.modalError = null;
       state.activeModal = { kind: 'metric-detail', metricId };
       renderApp();
       return;
@@ -1169,13 +1320,12 @@ function setupEventDelegation(): void {
         label: `来自数值「${m.definition.name}」的新增观测记录`
       };
       navigateTo('/records', { preserveReturnContext: true });
-      state.activeModal = {
-        kind: 'record-form',
+      prepareRecordFormModal({
         mode: 'create',
         defaultModuleId: m.module_id,
         defaultRecordTypeId: m.record_type_id,
         defaultTaskIds: []
-      };
+      });
       renderApp();
       return;
     }
@@ -1199,6 +1349,7 @@ function setupEventDelegation(): void {
     }
 
     if (action === 'open-create-achievement') {
+      state.modalError = null;
       state.activeModal = {
         kind: 'create-achievement',
         defaultModuleId: state.panels.achievements.moduleId
@@ -1210,6 +1361,7 @@ function setupEventDelegation(): void {
     if (action === 'open-achievement-detail') {
       const achievementId = target.getAttribute('data-achievement-id') ?? '';
       state.panels.achievements.selectedId = achievementId;
+      state.modalError = null;
       state.activeModal = { kind: 'achievement-detail', achievementId };
       renderApp();
       return;
@@ -1256,6 +1408,7 @@ function setupEventDelegation(): void {
     }
 
     if (action === 'open-create-module') {
+      state.modalError = null;
       state.activeModal = { kind: 'create-module' };
       renderApp();
       return;
@@ -1263,12 +1416,14 @@ function setupEventDelegation(): void {
 
     if (action === 'open-edit-module') {
       const moduleId = target.getAttribute('data-module-id') ?? '';
+      state.modalError = null;
       state.activeModal = { kind: 'edit-module', moduleId };
       renderApp();
       return;
     }
 
     if (action === 'open-create-template') {
+      state.modalError = null;
       state.activeModal = {
         kind: 'create-template',
         defaultModuleId: state.panels.settings.moduleId
@@ -1286,7 +1441,7 @@ function setupEventDelegation(): void {
     if (form.id === 'ld-login-form') {
       const fd = new FormData(form);
       const secret = String(fd.get('login_secret') ?? '').trim();
-      if (!secret) return;
+      if (!secret || state.loading) return;
       state.loading = true;
       state.loginError = null;
       renderApp();
@@ -1320,6 +1475,7 @@ function setupEventDelegation(): void {
     if (!data) return;
 
     if (form.id === 'ld-form-ai-generate') {
+      if (state.ai.busy) return;
       const fd = new FormData(form);
       const mode = String(fd.get('mode') ?? 'extend') as AiMode;
       const apply_mode = String(fd.get('apply_mode') ?? 'apply') as AiApplyMode;
@@ -1389,7 +1545,7 @@ function setupEventDelegation(): void {
           await refreshBootstrapAndNotify(aiBatchToast(envelope.batch));
         } else {
           pushToast(
-            envelope.job.validation.valid ? '候选已生成（尚未应用）' : '候选未通过校验',
+            envelope.job.validation.valid ? '候选已生成' : '候选未通过校验',
             aiJobToast(envelope.job),
             envelope.job.validation.valid ? 'info' : 'warning'
           );
@@ -1404,7 +1560,7 @@ function setupEventDelegation(): void {
             try {
               state.ai.result = await api.getAiGeneration(jobId);
             } catch {
-              // Keep the honest error banner; no fabricated candidate is shown.
+              // Keep honest error banner
             }
           }
         } else {
@@ -1415,6 +1571,150 @@ function setupEventDelegation(): void {
       }
       return;
     }
+
+    if (form.id === 'ld-form-record') {
+      if (state.submittingModal) return;
+      const draft = extractRecordFormDraft(form, state, data);
+      if (!draft) return;
+
+      saveRecordDraft(draft);
+      const signature = computePayloadSignature({
+        mode: draft.mode,
+        module_id: draft.moduleId,
+        record_type_id: draft.recordTypeId,
+        schema_version: draft.schemaVersion,
+        status: draft.status,
+        values: draft.values,
+        task_ids: draft.taskIds,
+        base_version: draft.baseVersion ?? undefined
+      });
+
+      const candidatePayload: RecordInput | (Omit<RecordInput, 'id'> & { base_version: number }) =
+        draft.mode === 'edit'
+          ? {
+              base_version: draft.baseVersion ?? 1,
+              module_id: draft.moduleId,
+              record_type_id: draft.recordTypeId,
+              schema_version: draft.schemaVersion,
+              occurred_at: draft.occurredAt,
+              timezone: draft.timezone,
+              status: draft.status,
+              values: draft.values,
+              task_ids: draft.taskIds
+            }
+          : {
+              id: draft.recordId,
+              module_id: draft.moduleId,
+              record_type_id: draft.recordTypeId,
+              schema_version: draft.schemaVersion,
+              occurred_at: draft.occurredAt,
+              timezone: draft.timezone,
+              status: draft.status,
+              values: draft.values,
+              task_ids: draft.taskIds
+            };
+
+      const prepared = prepareRecordMutationEnvelope({
+        draftKey: draft.draftKey,
+        mode: draft.mode,
+        candidateRecordId: draft.recordId,
+        candidatePayload,
+        signature,
+        allocateUuid: generateUuid
+      });
+
+      state.submittingModal = true;
+      state.recordForm.submissionStatus = 'submitting';
+      state.recordForm.operationId = prepared.operationId;
+      state.recordForm.recordId = prepared.recordId;
+      state.recordForm.conflictError = null;
+      state.recordForm.validationError = null;
+      state.modalError = null;
+      renderModalRegionOnly(true);
+
+      try {
+        if (draft.mode === 'edit') {
+          await api.updateRecord(
+            prepared.recordId,
+            prepared.payload as Omit<RecordInput, 'id'> & { base_version: number },
+            prepared.operationId
+          );
+          clearRecordDraft(draft.draftKey);
+          clearPendingMutation(draft.draftKey);
+          state.submittingModal = false;
+          state.recordForm.submissionStatus = 'confirmed_server';
+          state.activeModal = null;
+          await refreshBootstrapAndNotify(
+            `服务器已确认记录修改（operation_id: ${prepared.operationId.slice(0, 8)}…）`,
+            true
+          );
+        } else {
+          await api.createRecord(prepared.payload as RecordInput, prepared.operationId);
+          clearRecordDraft(draft.draftKey);
+          clearPendingMutation(draft.draftKey);
+          state.submittingModal = false;
+          state.recordForm.submissionStatus = 'confirmed_server';
+          state.activeModal = null;
+          await refreshBootstrapAndNotify(
+            `服务器已确认保存真实记录（operation_id: ${prepared.operationId.slice(0, 8)}…）`,
+            true
+          );
+        }
+      } catch (err) {
+        state.submittingModal = false;
+        if (isUnknownNetworkError(err)) {
+          // S1: Unknown network result -> keep exact operationId & frozenPayload for safe idempotent retry
+          const errMsg = err instanceof Error ? err.message : '网络结果未知';
+          savePendingMutation({
+            draftKey: draft.draftKey,
+            operationId: prepared.operationId,
+            recordId: prepared.recordId,
+            mode: draft.mode,
+            payloadSignature: signature,
+            frozenPayload: prepared.payload,
+            lastError: { code: 'NETWORK_UNKNOWN', message: errMsg },
+            savedAt: new Date().toISOString()
+          });
+          state.recordForm.submissionStatus = 'unknown_network';
+          renderModalRegionOnly(true);
+          pushToast(
+            '网络结果未知（已保留本机草稿）',
+            `未收到服务器回执。点击重试将沿用同一 operation_id (${prepared.operationId.slice(0, 8)}…) 重放，不会重复记账`,
+            'warning'
+          );
+          return;
+        }
+
+        // Definite server error (400 / 409 / 422): clear pending network retry so next edit gets a fresh operation_id,
+        // while keeping the local draft and form inputs intact!
+        clearPendingMutation(draft.draftKey);
+        state.recordForm.operationId = null;
+
+        if (err instanceof ApiClientError && err.status === 409) {
+          state.recordForm.submissionStatus = 'conflict_pending';
+          state.recordForm.conflictError = {
+            code: err.code,
+            message: err.message,
+            requestId: err.requestId
+          };
+          renderModalRegionOnly(true);
+          pushToast(`版本/状态冲突 (${err.code})`, `${err.message}；已保留你当前的本地输入`, 'warning');
+          return;
+        }
+
+        const desc = describeApiError(err);
+        state.recordForm.submissionStatus = 'validation_error';
+        state.recordForm.validationError = {
+          code: desc.code ?? 'VALIDATION_ERROR',
+          message: desc.message
+        };
+        renderModalRegionOnly(true);
+        pushToast(`校验未通过 (${desc.code ?? 'ERROR'})`, desc.message, 'warning');
+      }
+      return;
+    }
+
+    if (state.submittingModal) return;
 
     if (form.id === 'ld-form-create-task') {
       const fd = new FormData(form);
@@ -1444,6 +1744,7 @@ function setupEventDelegation(): void {
         }
       }
 
+      state.submittingModal = true;
       try {
         await api.createTask({
           module_id,
@@ -1454,83 +1755,12 @@ function setupEventDelegation(): void {
           business_date: business_date_raw || null,
           timezone
         });
+        state.submittingModal = false;
         state.activeModal = null;
         await refreshBootstrapAndNotify(`已创建任务「${title}」`);
       } catch (err) {
-        handleApiError(err);
-      }
-      return;
-    }
-
-    if (form.id === 'ld-form-record') {
-      const mode = form.getAttribute('data-mode') as 'create' | 'edit';
-      const recordId = form.getAttribute('data-record-id') ?? '';
-      const existing = mode === 'edit' ? data.records.find(r => r.id === recordId) : undefined;
-      const fd = new FormData(form);
-
-      const module_id = existing
-        ? existing.module_id
-        : String(fd.get('module_id') ?? (state.activeModal?.kind === 'record-form' ? state.activeModal.defaultModuleId : ''));
-      const record_type_id = existing
-        ? existing.record_type_id
-        : String(fd.get('record_type_id') ?? (state.activeModal?.kind === 'record-form' ? state.activeModal.defaultRecordTypeId : ''));
-      const tpl = data.record_types.find(rt => rt.id === record_type_id);
-      if (!tpl) return;
-
-      const occurred_at = String(fd.get('occurred_at') ?? '').trim();
-      const timezone = String(fd.get('timezone') ?? 'Asia/Shanghai').trim();
-      const status = String(fd.get('status') ?? 'confirmed') as 'draft' | 'confirmed';
-      const task_ids = fd.getAll('task_id').map(v => String(v));
-
-      const values: Record<string, string | number | boolean | null> = {};
-      const fieldElements = form.querySelectorAll('[data-field-key]');
-      fieldElements.forEach(el => {
-        const key = el.getAttribute('data-field-key')!;
-        const fType = el.getAttribute('data-field-type')!;
-        const raw = (el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value.trim();
-        if (raw === '') {
-          values[key] = null;
-        } else if (fType === 'integer') {
-          values[key] = Number.parseInt(raw, 10);
-        } else if (fType === 'boolean') {
-          values[key] = raw === 'true';
-        } else {
-          // text, textarea, decimal, date, single_select all use string in contract
-          values[key] = raw;
-        }
-      });
-
-      try {
-        if (mode === 'edit' && existing) {
-          await api.updateRecord(existing.id, {
-            base_version: existing.version,
-            module_id,
-            record_type_id,
-            schema_version: existing.schema_version,
-            occurred_at,
-            timezone,
-            status,
-            values,
-            task_ids
-          });
-          state.activeModal = null;
-          await refreshBootstrapAndNotify('记录已更新，关联任务、数值与成就已同步重算', true);
-        } else {
-          await api.createRecord({
-            module_id,
-            record_type_id,
-            schema_version: tpl.schema_version,
-            occurred_at,
-            timezone,
-            status,
-            values,
-            task_ids
-          });
-          state.activeModal = null;
-          await refreshBootstrapAndNotify('真实记录已保存，派生统计与任务验收已更新', true);
-        }
-      } catch (err) {
-        handleApiError(err);
+        state.submittingModal = false;
+        handleApiError(err, { insideModal: true });
       }
       return;
     }
@@ -1555,6 +1785,7 @@ function setupEventDelegation(): void {
       const unit = String(fd.get('unit') ?? '').trim();
       const timezone = String(fd.get('timezone') ?? 'Asia/Shanghai').trim();
 
+      state.submittingModal = true;
       try {
         await api.createMetric({
           module_id,
@@ -1566,10 +1797,12 @@ function setupEventDelegation(): void {
           window: windowVal,
           timezone
         });
+        state.submittingModal = false;
         state.activeModal = null;
         await refreshBootstrapAndNotify(`已创建数值定义「${name}」`);
       } catch (err) {
-        handleApiError(err);
+        state.submittingModal = false;
+        handleApiError(err, { insideModal: true });
       }
       return;
     }
@@ -1585,6 +1818,7 @@ function setupEventDelegation(): void {
         | 'include_existing'
         | 'from_activation';
 
+      state.submittingModal = true;
       try {
         await api.createAchievement({
           module_id,
@@ -1594,10 +1828,12 @@ function setupEventDelegation(): void {
           threshold,
           history_policy
         });
+        state.submittingModal = false;
         state.activeModal = null;
         await refreshBootstrapAndNotify(`已创建成就定义「${name}」`, true);
       } catch (err) {
-        handleApiError(err);
+        state.submittingModal = false;
+        handleApiError(err, { insideModal: true });
       }
       return;
     }
@@ -1609,12 +1845,15 @@ function setupEventDelegation(): void {
       const icon = String(fd.get('icon') ?? 'book') as any;
       const color = String(fd.get('color') ?? 'blue') as any;
 
+      state.submittingModal = true;
       try {
         await api.createModule({ name, description, icon, color });
+        state.submittingModal = false;
         state.activeModal = null;
         await refreshBootstrapAndNotify(`已创建自定义模块「${name}」，现已加入各面板筛选`);
       } catch (err) {
-        handleApiError(err);
+        state.submittingModal = false;
+        handleApiError(err, { insideModal: true });
       }
       return;
     }
@@ -1629,16 +1868,19 @@ function setupEventDelegation(): void {
         | 'disabled'
         | 'archived';
 
+      state.submittingModal = true;
       try {
         await api.updateModule(moduleId, {
           base_version: baseVersion,
           name,
           status
         });
+        state.submittingModal = false;
         state.activeModal = null;
         await refreshBootstrapAndNotify(`已更新模块「${name}」状态为 ${status}`);
       } catch (err) {
-        handleApiError(err);
+        state.submittingModal = false;
+        handleApiError(err, { insideModal: true });
       }
       return;
     }
@@ -1676,12 +1918,15 @@ function setupEventDelegation(): void {
         }
       }
 
+      state.submittingModal = true;
       try {
         await api.createRecordType({ module_id, name, fields });
+        state.submittingModal = false;
         state.activeModal = null;
         await refreshBootstrapAndNotify(`已创建记录模板「${name}」`);
       } catch (err) {
-        handleApiError(err);
+        state.submittingModal = false;
+        handleApiError(err, { insideModal: true });
       }
       return;
     }

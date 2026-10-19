@@ -11,7 +11,11 @@
     "db:migrate": "tsx packages/db/src/migrate.ts",
     "db:seed": "tsx packages/db/src/seed.ts",
     "contracts:export": "tsx scripts/export-contracts.ts",
-    "build:web": "node scripts/build-web.mjs"
+    "build:web": "node scripts/build-web.mjs",
+    "export:data": "tsx scripts/export-data.ts",
+    "restore:data": "tsx scripts/restore-data.ts",
+    "verify:web": "tsx apps/web/scripts/verify-web.ts",
+    "verify:all": "sh scripts/verify-all.sh"
   },
   "dependencies": {
     "@fastify/rate-limit": "11.2.1",

@@ -5,7 +5,11 @@ import type {
   RecordInput,
   TaskInput
 } from '../../../packages/contracts/src/index.js';
-import type { ModuleColorName, ModuleIconName } from '../../../packages/ui/src/index.js';
+import type {
+  ModuleColorName,
+  ModuleIconName,
+  SubmissionStateKind
+} from '../../../packages/ui/src/index.js';
 
 export type PanelRoute = '/' | '/tasks' | '/metrics' | '/achievements' | '/records' | '/settings';
 
@@ -13,6 +17,25 @@ export interface UserProfile {
   id: string;
   name: string;
   timezone: string;
+}
+
+// ---------------------------------------------------------------------------
+// S1: minimal user-data export (GET /api/v1/export). The payload is the raw
+// server backup envelope: format/schema/checksum metadata plus the whitelisted
+// per-user tables. Restore is intentionally CLI-only; the web UI only downloads.
+// ---------------------------------------------------------------------------
+
+export interface UserExportPayload {
+  format: 'life-dashboard-user-export';
+  schema_version: number;
+  contract_version: string;
+  exported_at: string;
+  user: (UserProfile & { created_at?: string }) | null;
+  cursor: number;
+  migrations?: Array<{ name: string; checksum: string }>;
+  counts: Record<string, number>;
+  checksum: string;
+  data: Record<string, Array<Record<string, unknown>>>;
 }
 
 export interface CapabilitiesData {
@@ -25,10 +48,12 @@ export interface CapabilitiesData {
   local_session: boolean;
   aggregations: Array<'count' | 'sum' | 'avg' | 'latest'>;
   windows: Array<'day' | 'week' | 'month' | 'all_time'>;
-  // Optional T2/T3 additions; older servers omit them.
   ai_generation?: boolean;
   ai_provider?: string;
   ai_schema_version?: string;
+  ai_preview?: boolean;
+  user_export?: boolean;
+  user_restore?: string;
 }
 
 export interface ModuleRow {
@@ -116,7 +141,7 @@ export interface AchievementDefinitionRow {
   user_id: string;
   module_id: string;
   metric_id: string;
-  definition: AchievementInput;
+  definition: AchievementInput & { repeat_policy?: 'once' | 'per_period' };
   version: number;
   created_at: string;
 }
@@ -176,8 +201,61 @@ export interface ReturnContext {
 }
 
 // ---------------------------------------------------------------------------
-// T2/T3 AI generation (module blueprint 1.0). Shapes mirror the server views in
-// packages/ai/src/service.ts and the frozen contract in packages/contracts.
+// S1 Record Reliability: Persistent Local Drafts & Stable Operation IDs
+// ---------------------------------------------------------------------------
+
+export interface PersistedRecordDraft {
+  draftKey: string;
+  mode: 'create' | 'edit';
+  recordId: string;
+  baseVersion: number | null;
+  moduleId: string;
+  recordTypeId: string;
+  schemaVersion: number;
+  occurredAt: string;
+  timezone: string;
+  status: 'draft' | 'confirmed';
+  values: Record<string, string | number | boolean | null>;
+  rawInputs: Record<string, string>;
+  taskIds: string[];
+  fromTaskId?: string;
+  updatedAt: string;
+}
+
+export interface PendingMutationEnvelope {
+  draftKey: string;
+  operationId: string;
+  recordId: string;
+  mode: 'create' | 'edit';
+  payloadSignature: string;
+  frozenPayload: RecordInput | (Omit<RecordInput, 'id'> & { base_version: number });
+  lastError: { code: string; message: string };
+  savedAt: string;
+}
+
+export interface RecordFormRuntimeState {
+  draftKey: string;
+  submissionStatus: SubmissionStateKind;
+  operationId: string | null;
+  recordId: string | null;
+  restoredFromStorage: boolean;
+  lastSavedLocalAt: string | null;
+  conflictError: { code: string; message: string; requestId?: string } | null;
+  conflictServerRecord: RecordRow | null;
+  validationError: { code: string; message: string } | null;
+}
+
+export interface PersistedUiPreferences {
+  theme: 'dark' | 'light';
+  reducedMotion: boolean;
+  unlockToastEnabled: boolean;
+  showInactiveModulesInFilter: boolean;
+  panels: Record<PanelKey, PanelFilterState>;
+  returnContext: ReturnContext | null;
+}
+
+// ---------------------------------------------------------------------------
+// T2/T3 AI generation (module blueprint 1.0)
 // ---------------------------------------------------------------------------
 
 export type AiMode = 'create' | 'extend';
@@ -201,7 +279,12 @@ export interface AiConfigData {
   schema_version: string;
   max_attempts: number;
   timeout_ms: number;
+  task_timeout_ms?: number;
   daily_job_limit: number;
+  quota_window_hours?: number;
+  quota_unit?: string;
+  quota_refund_policy?: string;
+  monetary_budget_enforced?: boolean;
   max_output_tokens?: number;
   supported_content_types: AiContentType[];
   supported_tasks?: { schedules?: string[]; completion_modes?: string[] };
@@ -297,7 +380,6 @@ export interface AiBlueprint {
   warnings?: string[];
 }
 
-/** Server counts: candidate views use plural keys, applied batches use singular kinds. */
 export interface AiGenerationSummary {
   module?: number;
   record_types?: number;
@@ -393,5 +475,6 @@ export type {
   Field,
   MetricInput,
   RecordInput,
+  SubmissionStateKind,
   TaskInput
 };

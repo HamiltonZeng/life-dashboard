@@ -7,6 +7,7 @@ import type {
   PanelFilterState,
   PanelKey,
   PanelRoute,
+  RecordFormRuntimeState,
   ReturnContext,
   UserProfile
 } from './types.js';
@@ -31,13 +32,29 @@ export interface AiState {
   lastRevoke: string | null;
 }
 
+export interface ModalConflictBannerState {
+  code: string;
+  message: string;
+  serverVersion?: number;
+  serverSummary?: string;
+}
+
+/** S1 minimal export UI state (download only; restore stays CLI-only). */
+export interface ExportUiState {
+  status: 'idle' | 'exporting' | 'success' | 'error';
+  message: string | null;
+  fileName: string | null;
+}
+
 export interface AppState {
   authStatus: 'checking' | 'unauthenticated' | 'authenticated';
   user: UserProfile | null;
   capabilities: CapabilitiesData | null;
   bootstrap: BootstrapData | null;
   loading: boolean;
+  submittingModal: boolean;
   error: { code?: string; message: string; requestId?: string } | null;
+  modalError: ModalConflictBannerState | null;
   loginError: string | null;
   route: PanelRoute;
   theme: 'dark' | 'light';
@@ -46,6 +63,8 @@ export interface AppState {
   showInactiveModulesInFilter: boolean;
   panels: Record<PanelKey, PanelFilterState>;
   returnContext: ReturnContext | null;
+  recordForm: RecordFormRuntimeState;
+  exportUi: ExportUiState;
   ai: AiState;
   activeModal:
     | null
@@ -73,6 +92,20 @@ export interface AppState {
   toasts: ToastItem[];
 }
 
+export function createInitialRecordFormState(): RecordFormRuntimeState {
+  return {
+    draftKey: '',
+    submissionStatus: 'idle',
+    operationId: null,
+    recordId: null,
+    restoredFromStorage: false,
+    lastSavedLocalAt: null,
+    conflictError: null,
+    conflictServerRecord: null,
+    validationError: null
+  };
+}
+
 export function createInitialState(): AppState {
   return {
     authStatus: 'checking',
@@ -80,7 +113,9 @@ export function createInitialState(): AppState {
     capabilities: null,
     bootstrap: null,
     loading: false,
+    submittingModal: false,
     error: null,
+    modalError: null,
     loginError: null,
     route: '/',
     theme: 'dark',
@@ -125,6 +160,12 @@ export function createInitialState(): AppState {
       }
     },
     returnContext: null,
+    recordForm: createInitialRecordFormState(),
+    exportUi: {
+      status: 'idle',
+      message: null,
+      fileName: null
+    },
     ai: {
       config: null,
       configLoading: false,

@@ -2880,6 +2880,54 @@
           }
         ]
       }
+    },
+    "/api/v1/export": {
+      "get": {
+        "summary": "Versioned, checksummed user-data export for manual S1 restore",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {},
+                    "operation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "page": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "401": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "403": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "404": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "409": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          },
+          "422": {
+            "description": "Error envelope: error.code, error.message, optional error.details, error.request_id"
+          }
+        }
+      }
     }
   },
   "components": {

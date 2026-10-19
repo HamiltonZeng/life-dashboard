@@ -34,6 +34,7 @@
 | PUT | `/records/{id}` | 完整替换记录内容，传 schema 中 RecordUpdate，不能更换模块/模板 |
 | DELETE | `/records/{id}` | `{base_version}`；软删除并保留历史证据，触发复核 |
 | POST | `/tasks/{id}/complete` | `{base_version}`；仅 manual/record_optional |
+| GET | `/export` | 版本化、带校验和的当前用户数据导出（不含会话/凭据）；仅用于人工备份 |
 | GET | `/ai/config` | AI 供应商、模型、结构化能力与预算边界；不返回密钥 |
 | POST | `/ai/generations` | 发起一次模块蓝图生成；`apply_mode=apply` 在原子事务中应用，`preview` 只保留候选 |
 | GET | `/ai/generations` | 生成任务列表，不含完整候选 |
@@ -105,7 +106,38 @@ sum/avg/latest 只允许数值字段，单位必须与字段定义一致；count
 
 批次撤销：无真实记录或其他配置引用时删除本次新增定义；一旦被记录、授予或外部配置引用，则归档模块、取消任务、停用数值与成就定义，绝不级联删除真实记录。
 
+## S1 用户数据导出/恢复
+
+`GET /export` 只读、需要本地会话，返回 `{data: backup}`。备份是**用户自己的数据**，包含个人记录，不是公开格式；不要提交到仓库或发送到第三方。
+
+```json
+{
+  "data": {
+    "format": "life-dashboard-user-export",
+    "schema_version": 1,
+    "contract_version": "0.2.0",
+    "exported_at": "2026-10-19T08:00:00.000Z",
+    "user": {"id": "…", "name": "…", "timezone": "Asia/Shanghai", "created_at": "…"},
+    "cursor": 12,
+    "migrations": [{"name": "0001_core.sql", "checksum": "…"}, {"name": "0002_ai.sql", "checksum": "…"}],
+    "counts": {"modules": 4, "record_types": 4, "tasks": 0, "records": 0, "…": 0},
+    "checksum": "sha256-hex",
+    "data": {
+      "users": [], "user_sync_clock": [], "modules": [], "record_types": [], "task_templates": [],
+      "tasks": [], "records": [], "record_tasks": [], "record_revisions": [],
+      "metric_definitions": [], "achievement_definitions": [], "achievement_awards": [],
+      "change_log": [], "mutation_receipts": []
+    }
+  }
+}
+```
+
+- 字段/表白名单固定；`sessions`、密码、AI 生成任务与批次审计不在导出内。软删除记录保留 `deleted_at` 墓碑，`record_revisions` 与 `change_log` 保留，`mutation_receipts` 保留以避免恢复后旧幂等键重复记账。
+- `checksum` 覆盖除自身外的完整备份（稳定 JSON 序列化，时间已规范为 ISO 字符串）；恢复端必须重新校验。
+- 契约版本保持 0.2.0：这是附加的只读导出端点，不改变既有请求载荷。恢复是服务端 CLI（`pnpm restore:data`），只接受**空的、迁移清单一致的**目标库；在单事务内写入，任一校验/外键/行数失败全部回滚。恢复不包含会话；恢复后重新登录。
+- 恢复不是同步协议：没有设备游标/outbox/ack，也不能把备份当作多端合并工具。完整备份保留策略、自动恢复演练和告警仍属 T4/T5。
+
 ## 前端接手范围
 
-`apps/web`、`packages/ui` 已交付 T1 前端（空白首页、五面板、模块筛选、记录表单、关联跳转、响应式与错误状态），并接入本契约的 AI 生成入口。修改共享依赖与 lockfile 仍由集成负责人合并。
+`apps/web`、`packages/ui` 已交付 T1 前端（空白首页、五面板、模块筛选、记录表单、关联跳转、响应式与错误状态）、AI 生成入口，以及 S0-B/S1 的模块化拆分、本机草稿、提交状态、稳定 `operation_id` 和导出按钮。`docker compose run --rm tools corepack pnpm verify:web` 是 Docker 内可复跑的 DOM-less 渲染/存储验证；真实浏览器 E2E 与手机实机仍属后续任务。修改共享依赖与 lockfile 仍由集成负责人合并。
 测试假数据只在 `tests` 与独立测试数据库使用。`tests/integration/api.test.ts`、`tests/integration/ai.test.ts` 提供完整请求与验收例子，不应用到用户数据库。

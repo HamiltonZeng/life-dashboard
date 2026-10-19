@@ -19,6 +19,7 @@ import type {
   RecordTypeRow,
   TaskInput,
   TaskRow,
+  UserExportPayload,
   UserProfile
 } from './types.js';
 import type { Field } from '../../../packages/contracts/src/index.js';
@@ -37,6 +38,20 @@ export class ApiClientError extends Error {
     this.details = err.details;
     this.requestId = err.request_id;
   }
+}
+
+export function isUnknownNetworkError(err: unknown): boolean {
+  if (!(err instanceof ApiClientError)) {
+    return true;
+  }
+  return (
+    err.status === 0 ||
+    err.status === 502 ||
+    err.status === 503 ||
+    err.status === 504 ||
+    err.code === 'NETWORK_ERROR' ||
+    err.code === 'BAD_GATEWAY'
+  );
 }
 
 export function generateUuid(): string {
@@ -67,12 +82,20 @@ async function request<T>(
     headers['Idempotency-Key'] = idempotencyKey ?? generateUuid();
   }
 
-  const res = await fetch(`/api/v1${path}`, {
-    method,
-    headers,
-    credentials: 'same-origin',
-    body: body !== undefined ? JSON.stringify(body) : undefined
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}`, {
+      method,
+      headers,
+      credentials: 'same-origin',
+      body: body !== undefined ? JSON.stringify(body) : undefined
+    });
+  } catch (networkErr) {
+    throw new ApiClientError(0, {
+      code: 'NETWORK_ERROR',
+      message: networkErr instanceof Error ? networkErr.message : '网络连接中断，未收到服务器回执'
+    });
+  }
 
   const payload = (await res.json().catch(() => ({}))) as {
     data?: T;
@@ -91,12 +114,6 @@ async function request<T>(
 
   return payload.data as T;
 }
-
-// ---------------------------------------------------------------------------
-// AI response normalisers. The contract wraps generation responses in
-// {data:{job,batch,already_applied}}; GET list returns {data:[...],page}. These
-// helpers keep the UI tolerant of both the documented envelope and a plain row.
-// ---------------------------------------------------------------------------
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -142,6 +159,15 @@ export const api = {
 
   getBootstrap(): Promise<BootstrapData> {
     return request<BootstrapData>('GET', '/bootstrap');
+  },
+
+  /**
+   * S1 minimal export: reads the authenticated user's complete server-side
+   * data snapshot. Read-only GET; the server attaches format/schema/checksum
+   * metadata. Credentials/session material are not part of the payload.
+   */
+  exportUserData(): Promise<UserExportPayload> {
+    return request<UserExportPayload>('GET', '/export');
   },
 
   createModule(
@@ -283,8 +309,6 @@ export const api = {
     );
   },
 
-  // ---- AI generation (T2/T3) ----------------------------------------------
-
   getAiConfig(): Promise<AiConfigData> {
     return request<AiConfigData>('GET', '/ai/config');
   },
@@ -302,29 +326,49 @@ export const api = {
     );
   },
 
-  createAiGeneration(input: AiGenerationRequest): Promise<AiGenerationEnvelope> {
-    return request<unknown>('POST', '/ai/generations', input).then(normalizeAiEnvelope);
-  },
-
-  applyAiGeneration(id: string, baseModuleVersion: number | null): Promise<AiGenerationEnvelope> {
-    return request<unknown>('POST', `/ai/generations/${encodeURIComponent(id)}/apply`, {
-      base_module_version: baseModuleVersion
-    }).then(normalizeAiEnvelope);
-  },
-
-  retryAiGeneration(id: string): Promise<AiGenerationEnvelope> {
-    return request<unknown>('POST', `/ai/generations/${encodeURIComponent(id)}/retry`, {}).then(
+  createAiGeneration(input: AiGenerationRequest, idempotencyKey?: string): Promise<AiGenerationEnvelope> {
+    return request<unknown>('POST', '/ai/generations', input, idempotencyKey).then(
       normalizeAiEnvelope
     );
   },
 
-  cancelAiGeneration(id: string): Promise<AiGenerationEnvelope> {
-    return request<unknown>('POST', `/ai/generations/${encodeURIComponent(id)}/cancel`, {}).then(
-      normalizeAiEnvelope
-    );
+  applyAiGeneration(
+    id: string,
+    baseModuleVersion: number | null,
+    idempotencyKey?: string
+  ): Promise<AiGenerationEnvelope> {
+    return request<unknown>(
+      'POST',
+      `/ai/generations/${encodeURIComponent(id)}/apply`,
+      { base_module_version: baseModuleVersion },
+      idempotencyKey
+    ).then(normalizeAiEnvelope);
   },
 
-  revokeAiBatch(id: string): Promise<AiRevokeResult> {
-    return request<AiRevokeResult>('POST', `/ai/batches/${encodeURIComponent(id)}/revoke`, {});
+  retryAiGeneration(id: string, idempotencyKey?: string): Promise<AiGenerationEnvelope> {
+    return request<unknown>(
+      'POST',
+      `/ai/generations/${encodeURIComponent(id)}/retry`,
+      {},
+      idempotencyKey
+    ).then(normalizeAiEnvelope);
+  },
+
+  cancelAiGeneration(id: string, idempotencyKey?: string): Promise<AiGenerationEnvelope> {
+    return request<unknown>(
+      'POST',
+      `/ai/generations/${encodeURIComponent(id)}/cancel`,
+      {},
+      idempotencyKey
+    ).then(normalizeAiEnvelope);
+  },
+
+  revokeAiBatch(id: string, idempotencyKey?: string): Promise<AiRevokeResult> {
+    return request<AiRevokeResult>(
+      'POST',
+      `/ai/batches/${encodeURIComponent(id)}/revoke`,
+      {},
+      idempotencyKey
+    );
   }
 };

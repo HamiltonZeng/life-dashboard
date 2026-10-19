@@ -158,7 +158,63 @@ export const MODULE_STATUS_META: Record<string, { label: string; tone: string }>
 };
 
 // ---------------------------------------------------------------------------
-// AI generation (module blueprint 1.0) presentation tokens.
+// S1 Record & Form Reliability Status Tokens
+// Explicitly distinguishes local draft, waiting for server, unknown network
+// result (retry with same operation_id), server confirmed, and 409 conflict.
+// ---------------------------------------------------------------------------
+
+export type SubmissionStateKind =
+  | 'idle'
+  | 'saved_local'
+  | 'submitting'
+  | 'unknown_network'
+  | 'confirmed_server'
+  | 'conflict_pending'
+  | 'validation_error';
+
+export const SUBMISSION_STATE_META: Record<
+  SubmissionStateKind,
+  { label: string; tone: string; description: string }
+> = {
+  idle: {
+    label: '准备输入',
+    tone: 'neutral',
+    description: '尚未修改表单内容'
+  },
+  saved_local: {
+    label: '已保存本机草稿',
+    tone: 'info',
+    description: '输入已保存在当前浏览器本机草稿，刷新页面可恢复，尚未提交至服务器'
+  },
+  submitting: {
+    label: '等待服务器确认',
+    tone: 'info',
+    description: '正在向服务器提交并锁定重复点击，请等待事务回执'
+  },
+  unknown_network: {
+    label: '网络结果未知（待重试）',
+    tone: 'warning',
+    description: '网络中断或超时，未收到服务器回执；直接点击重试将沿用同一 operation_id 与完整载荷，避免重复记账'
+  },
+  confirmed_server: {
+    label: '服务器已确认',
+    tone: 'success',
+    description: '服务器事务已确认写入并完成派生统计重算'
+  },
+  conflict_pending: {
+    label: '冲突待处理 (409)',
+    tone: 'danger',
+    description: '服务器版本或状态已变化；已保留你当前未保存的本地输入，请核对差异后处理'
+  },
+  validation_error: {
+    label: '校验未通过',
+    tone: 'danger',
+    description: '请求未通过字段或规则校验，已保留当前输入供修正'
+  }
+};
+
+// ---------------------------------------------------------------------------
+// AI generation (module blueprint 1.0) presentation tokens & support matrix.
 // ---------------------------------------------------------------------------
 
 export const AI_JOB_STATUS_META: Record<string, { label: string; tone: string; description: string }> = {
@@ -189,12 +245,12 @@ export const AI_CONTENT_TYPE_META: Record<
   tasks: {
     label: '任务 (tasks)',
     shortLabel: '任务',
-    description: '新增任务实例（首版仅 unscheduled 免排期任务可应用）'
+    description: '新增任务实例（当前支持 unscheduled 免排期与 once 单日任务）'
   },
   achievements: {
     label: '成就定义 (achievements)',
     shortLabel: '成就',
-    description: '新增基于数值门槛的一次性成就规则'
+    description: '新增基于数值门槛的成就规则（支持 once 与 per_period）'
   }
 };
 
@@ -208,3 +264,42 @@ export const AI_APPLY_MODE_META: Record<string, { label: string; description: st
   preview: { label: '仅预览候选', description: '只生成候选并保存校验结果，确认后再手动应用' }
 };
 
+export interface BlueprintSupportMatrixRow {
+  category: string;
+  persistedFields: string;
+  candidateOnlyFields: string;
+  boundaryNote: string;
+}
+
+export const AI_BLUEPRINT_SUPPORT_MATRIX: BlueprintSupportMatrixRow[] = [
+  {
+    category: '模块 (module)',
+    persistedFields: 'create 模式写入 name、description、icon、color',
+    candidateOnlyFields: 'extend 模式下的模块 name / icon / color 仅作目标核对',
+    boundaryNote: '扩展现有模块不会覆盖原模块名称、图标或主题色'
+  },
+  {
+    category: '记录模板 (record_types)',
+    persistedFields: 'name、fields (key/label/type/required/unit/options/minimum/maximum)',
+    candidateOnlyFields: '模板级 description（仅在候选预览展示，记入 warnings）',
+    boundaryNote: '仅支持 generic 通用渲染器；不生成真实记录'
+  },
+  {
+    category: '数值定义 (metrics)',
+    persistedFields: 'name、unit、aggregation (count/sum/avg/latest)、field_key、window、timezone',
+    candidateOnlyFields: 'description、proposed_target（建议目标仅展示，不写入正式数值定义）',
+    boundaryNote: '建议目标未采用前不参与正式目标进度；无真实记录时显示「暂无数据」'
+  },
+  {
+    category: '任务 (tasks)',
+    persistedFields: 'title、completion_mode、record_type_id、acceptance、business_date (once)、timezone',
+    candidateOnlyFields: 'description、priority、estimated_minutes（仅保留在候选蓝图，记入 warnings）',
+    boundaryNote: '支持 unscheduled 与 once；daily/weekly 周期调度将在后续阶段开放，当前明确拒绝'
+  },
+  {
+    category: '成就 (achievements)',
+    persistedFields: 'name、metric_id、operator (gte/lte)、threshold、repeat_policy (once/per_period)、history_policy',
+    candidateOnlyFields: 'description、icon（仅在候选预览展示）',
+    boundaryNote: 'AI 不能直接输出 unlocked=true，必须由真实已确认记录触发解锁'
+  }
+];
