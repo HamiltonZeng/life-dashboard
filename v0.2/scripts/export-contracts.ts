@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { z } from 'zod';
 import * as c from '../packages/contracts/src/index.js';
-const schemas={ModuleInput:c.moduleInput,RecordTypeInput:c.recordTypeInput,TaskInput:c.taskInput,MetricInput:c.metricInput,AchievementInput:c.achievementInput,RecordInput:c.recordInput,RecordUpdate:c.recordUpdate,AiGenerationInput:c.aiGenerationInput,AiApplyInput:c.aiApplyInput};
+const schemas={ProfileInput:c.profileInput,HomePreferencesInput:c.homePreferencesInput,ModuleInput:c.moduleInput,RecordTypeInput:c.recordTypeInput,TaskInput:c.taskInput,MetricInput:c.metricInput,AchievementInput:c.achievementInput,RecordInput:c.recordInput,RecordUpdate:c.recordUpdate,AiGenerationInput:c.aiGenerationInput,AiApplyInput:c.aiApplyInput};
 const exported=Object.fromEntries(Object.entries(schemas).map(([k,v])=>[k,z.toJSONSchema(v,{io:'input',unrepresentable:'any'})]));
 writeFileSync('packages/contracts/request-schemas.json',JSON.stringify(exported,null,2)+'\n');
 const paths:Record<string,any>={};
@@ -40,5 +40,7 @@ paths['/api/v1/ai/generations/{id}/cancel']={parameters:aiIdParams,post:emptyAiC
 paths['/api/v1/ai/batches']={get:{summary:'List applied AI batches',responses:aiResponses,parameters:pageParams}};
 paths['/api/v1/ai/batches/{id}']={parameters:aiIdParams,get:{summary:'Applied batch with local reference to real id mapping',responses:aiResponses}};
 paths['/api/v1/ai/batches/{id}/revoke']={parameters:aiIdParams,post:emptyAiCommand('Revoke a batch; delete unreferenced definitions or archive referenced configuration')};
+for(const [route,schema] of [['profile','ProfileInput'],['home-preferences','HomePreferencesInput']]) paths['/api/v1/'+route]={get:{responses},patch:command({$ref:'#/components/schemas/'+schema})};
+paths['/api/v1/home']={get:{responses}};
 paths['/api/v1/export']={get:{summary:'Versioned, checksummed user-data export for manual S1 restore',responses}};
 writeFileSync('packages/contracts/openapi.json',JSON.stringify({openapi:'3.1.0',info:{title:'人生面板 T2/T3 API',version:c.CONTRACT_VERSION},servers:[{url:'http://localhost:18080'}],security:[{localSession:[]}],paths,components:{securitySchemes:{localSession:{type:'apiKey',in:'cookie',name:'life_session'}},schemas:exported}},null,2)+'\n');

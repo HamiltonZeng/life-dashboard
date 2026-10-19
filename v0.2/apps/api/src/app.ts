@@ -33,12 +33,12 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
     });
   };
   const ai=profile==='development'?createAi():null;
-  const disabledAi={profile:'mvp',enabled:false,provider:'disabled',cloud_ai:false,configured:false,model:'',schema_version:'1.0',supported_content_types:[],notes:['v0.1 发布模式不提供 AI 功能。']};
+  const disabledAi={profile:'mvp',enabled:false,provider:'disabled',cloud_ai:false,configured:false,model:'',schema_version:'1.0',supported_content_types:[],notes:['v0.2 第一阶段不提供 AI 功能。']};
   const app=Fastify({logger:options.logger??false,bodyLimit:128*1024,requestTimeout:15000});
   await app.register(rateLimit,{global:false});
   app.decorateRequest('accountId','');
   app.setErrorHandler((error,request,reply)=>{
-    if(error instanceof ZodError) return reply.code(400).send({error:{code:'VALIDATION_ERROR',message:'Request failed validation',details:error.issues.map(i=>({path:i.path,message:i.message})),request_id:request.id}});
+    if(error instanceof ZodError) return reply.code(error.issues.some(i=>i.code==='too_big' && ['pinned_metric_ids','pinned_task_ids'].includes(String(i.path[0])))?422:400).send({error:{code:'VALIDATION_ERROR',message:'Request failed validation',details:error.issues.map(i=>({path:i.path,message:i.message})),request_id:request.id}});
     if(error instanceof DomainError) return reply.code(error.status).send({error:{code:error.code,message:error.message,details:error.details,request_id:request.id}});
     const status=(error as {statusCode?:number}).statusCode;
     if(status && status<500) return reply.code(status).send({error:{code:status===429?'RATE_LIMITED':'BAD_REQUEST',message:status===429?'Too many requests':'Invalid request',request_id:request.id}});
@@ -57,8 +57,9 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
     requireThat(row,'UNAUTHENTICATED','Session expired or revoked',401);
     req.accountId=row.user_id;
     const path=req.url.split('?')[0];
+    if(/^\/api\/v1\/(ai\/(chat|recording|profile-update|reward-pricing)|avatar\/(render|redeem)|wallet)(\/|$)/.test(path)) throw new DomainError('FEATURE_DISABLED','This capability is not available',409);
     if(profile==='mvp' && path.startsWith('/api/v1/ai/') && !(req.method==='GET'&&path==='/api/v1/ai/config')) {
-      throw new DomainError('FEATURE_DISABLED','AI is disabled in the v0.1 MVP profile',409);
+      throw new DomainError('FEATURE_DISABLED','AI is disabled in the MVP profile',409);
     }
   });
   app.get('/health/live',async()=>({status:'ok'}));
@@ -81,13 +82,16 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
   });
   app.get('/api/v1/me',async req=>({data:(await pool.query('SELECT id,name,timezone FROM users WHERE id=$1',[req.accountId])).rows[0]}));
   app.get('/api/v1/capabilities',async()=>({data:{
-    contract_version:CONTRACT_VERSION,profile,stage:profile==='mvp'?'v0.1-mvp':'T2/T3-ai',sync:false,
+    contract_version:CONTRACT_VERSION,profile,stage:profile==='mvp'?'v0.2-phase1':'T2/T3-ai',sync:false,
     cloud_ai:ai?.configSummary().cloud_ai??false,ai_generation:ai!==null,ai_provider:ai?.configSummary().provider??'disabled',
     ai_schema_version:'1.0',ai_preview:ai!==null,
+    home:true,home_preferences:true,profile_fields:true,ai_chat:false,ai_recording:false,ai_profile_update:false,ai_reward_pricing:false,avatar_renderer:false,avatar_redemption:false,
     recurring_tasks:false,professional_ledger:false,local_session:true,user_export:true,user_restore:'cli',
     aggregations:['count','sum','avg','latest'],windows:['day','week','month','all_time']
   }}));
   const idempotency=(req:any)=>uuid.parse(req.headers['idempotency-key']);
+  for(const route of ['profile','home-preferences','home']) app.get(`/api/v1/${route}`,async req=>({data:await service.configuration(req.accountId,route)}));
+  for(const route of ['profile','home-preferences']) app.patch(`/api/v1/${route}`,async req=>service.mutate(req.accountId,idempotency(req),'PATCH',route,req.body));
   app.get('/api/v1/bootstrap',async req=>({data:await service.snapshot(req.accountId)}));
   app.get('/api/v1/export',async req=>({data:await exportUserData(pool,req.accountId)}));
   app.get('/api/v1/ai/config',async()=>({data:ai?.configView()??disabledAi}));

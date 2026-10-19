@@ -75,3 +75,21 @@ export type AiApplyMode = z.infer<typeof aiApplyMode>;
 export type AiContentType = z.infer<typeof aiContentType>;
 export const AI_BLUEPRINT_SCHEMA_VERSION = '1.0';
 export const CONTRACT_VERSION = '0.2.0';
+
+// v0.2 phase one: business field names are data, never credential configuration.
+export const profileFieldInput = fieldSchema.omit({required:true,minimum:true,maximum:true}).extend({
+  id:uuid,module_id:uuid,kind:z.literal('profile'),
+  value:z.union([z.string().max(20000),z.number().finite(),z.boolean(),z.null()])
+});
+export const profileInput = z.strictObject({
+  base_version:z.int().positive(), nickname:z.string().trim().min(1).max(60).optional(),
+  bio:z.string().max(1000).nullable().optional(),timezone:timezone.optional(),
+  field_upserts:z.array(profileFieldInput).max(120).optional(),field_remove_ids:z.array(uuid).max(120).optional()
+});
+const uniqueIds=(max:number)=>z.array(uuid).max(max).refine(v=>new Set(v).size===v.length,'IDs must be unique');
+export const homePreferencesInput=z.strictObject({
+  base_version:z.int().positive(),minimal_mode:z.boolean().optional(),
+  pinned_metric_ids:uniqueIds(4).optional(),pinned_task_ids:uniqueIds(5).optional()
+});
+export type ProfileInput=z.infer<typeof profileInput>;
+export type HomePreferencesInput=z.infer<typeof homePreferencesInput>;

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { createDb, type Client } from '../../../packages/db/src/client.js';
 import { activeMetrics } from '../../../packages/db/src/references.js';
+import { readProfile, readPreferences, executeConfiguration, readHome } from './user-home.js';
 import * as contract from '../../../packages/contracts/src/index.js';
 import { calculateMetric, DomainError, requireThat, taskProgress, validateFields, validateValues, assertTaskCompletion, canRecomputeTask, type Fact } from '../../../packages/domain/src/index.js';
 
@@ -46,7 +47,7 @@ export class Service {
         await c.query('COMMIT'); return receipt.response;
       }
       const result = await this.execute(c,user,method,path,body);
-      await this.recompute(c,user);
+      if(!['profile','home-preferences'].includes(path)) await this.recompute(c,user);
       const response = {data: result, operation_id: operation};
       await c.query('INSERT INTO mutation_receipts(user_id,operation_id,request_hash,response) VALUES($1,$2,$3,$4)',[user,operation,digest,json(response)]);
       await c.query('COMMIT'); return response;
@@ -57,6 +58,7 @@ export class Service {
     } finally {c.release();}
   }
   async execute(c: Client, user: string, method: string, path: string, raw: unknown): Promise<unknown> {
+    if(method==='PATCH' && ['profile','home-preferences'].includes(path)) return executeConfiguration(this,c,user,path,raw);
     const [kind,id,action] = path.split('/');
     if (id) contract.uuid.parse(id);
     if (kind === 'modules' && method === 'POST' && !id) {
@@ -210,6 +212,14 @@ export class Service {
         }
       }
     }
+  }
+  async configuration(user:string,kind:string) {
+    const c=await this.pool.connect();
+    try {
+      await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const data=kind==='profile'?await readProfile(c,user):kind==='home-preferences'?await readPreferences(c,user):await readHome(this,c,user);
+      await c.query('COMMIT');return data;
+    } catch(e) {await c.query('ROLLBACK');throw e;} finally {c.release();}
   }
   async snapshot(user: string) {
     const c=await this.pool.connect();

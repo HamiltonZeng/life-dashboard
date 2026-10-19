@@ -109,7 +109,7 @@ test('S1 minimal export/restore acceptance', async t => {
       assert.ok(!('sessions' in backup.data));
       assert.ok(!('ai_generation_jobs' in backup.data));
       assert.ok(!/login_secret/i.test(text));
-      assert.deepEqual(backup.migrations.map((m: any) => m.name), ['0001_core.sql', '0002_ai.sql']);
+      assert.deepEqual(backup.migrations.map((m: any) => m.name), ['0001_core.sql', '0002_ai.sql', '0003_v02_phase1.sql']);
     });
 
     await t.test('export only contains the authenticated user rows', async () => {

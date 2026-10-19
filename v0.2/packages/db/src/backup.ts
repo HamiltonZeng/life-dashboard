@@ -63,6 +63,10 @@ export const BACKUP_TABLES = [
     columns: ['id', 'user_id', 'achievement_id', 'rule_version', 'period_key', 'state', 'unlocked_at', 'evaluated_at', 'evidence', 'original_evidence', 'version'],
     json: ['evidence', 'original_evidence'], where: 'user_id=$1', order: 'unlocked_at,id', countWhere: 'user_id=$1'
   },
+  {name:'user_profiles',columns:['user_id', 'version', 'bio', 'updated_at'],json:[],where:'user_id=$1',order:'user_id',countWhere:'user_id=$1'},
+  {name:'profile_fields',columns:['id', 'user_id', 'module_id', 'key', 'label', 'type', 'kind', 'value', 'unit', 'options'],json:['value', 'options'],where:'user_id=$1',order:'id',countWhere:'user_id=$1'},
+  {name:'home_preferences',columns:['user_id', 'version', 'minimal_mode', 'pinned_metric_ids', 'pinned_task_ids', 'updated_at'],json:['pinned_metric_ids', 'pinned_task_ids'],where:'user_id=$1',order:'user_id',countWhere:'user_id=$1'},
+  {name:'configuration_revisions',columns:['user_id', 'entity_type', 'version', 'snapshot', 'saved_at'],json:['snapshot'],where:'user_id=$1',order:'entity_type,version',countWhere:'user_id=$1'},
   {
     name: 'change_log', columns: ['user_id', 'seq', 'entity_type', 'entity_id', 'version', 'payload', 'created_at'],
     json: ['payload'], where: 'user_id=$1', order: 'seq', countWhere: 'user_id=$1'

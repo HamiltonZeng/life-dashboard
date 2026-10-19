@@ -1,6 +1,6 @@
 # API 契约 0.2.0（T0/T1 后端 + T2/T3 AI 生成）
 
-**v0.1 发布模式覆盖说明：**默认 `APP_PROFILE=mvp`，AI 能力关闭；AI config GET 返回禁用状态，其他 AI GET/写接口统一 409 `FEATURE_DISABLED`，且不初始化供应商、不创建 job。`development` 显式保留下文旧 AI 契约。详见 [MVP_CONTRACT](../../docs/MVP_CONTRACT.md)，前端以 capability 为准；请求契约版本和两项迁移未改变。
+**v0.1 发布模式覆盖说明：**默认 `APP_PROFILE=mvp`，AI 能力关闭；AI config GET 返回禁用状态，其他 AI GET/写接口统一 409 `FEATURE_DISABLED`，且不初始化供应商、不创建 job。`development` 显式保留下文旧 AI 契约。详见 [MVP_CONTRACT](../../docs/MVP_CONTRACT.md)，前端以 capability 为准。v0.2 第一阶段增量见下节；请求契约版本仍为 0.2.0，迁移已增加 0003。
 
 请求权威定义为 `src/index.ts`；导出文件 `request-schemas.json`、`openapi.json` 可供非 TypeScript 客户端读取。重新导出必须在 tools 容器运行 `corepack pnpm contracts:export`。API 冻结的是本阶段可用子集；模块蓝图 1.0 的权威 Schema 仍是 `design/人生面板_AI模块蓝图.schema.json`，它是模型输出规范，不是直接对外提交的任意配置写入接口。
 
@@ -143,3 +143,18 @@ sum/avg/latest 只允许数值字段，单位必须与字段定义一致；count
 
 `apps/web`、`packages/ui` 已交付 T1 前端（空白首页、五面板、模块筛选、记录表单、关联跳转、响应式与错误状态）、AI 生成入口，以及 S0-B/S1 的模块化拆分、本机草稿、提交状态、稳定 `operation_id` 和导出按钮。`docker compose run --rm tools corepack pnpm verify:web` 是 Docker 内可复跑的 DOM-less 渲染/存储验证；真实浏览器 E2E 与手机实机仍属后续任务。修改共享依赖与 lockfile 仍由集成负责人合并。
 测试假数据只在 `tests` 与独立测试数据库使用。`tests/integration/api.test.ts`、`tests/integration/ai.test.ts` 提供完整请求与验收例子，不应用到用户数据库。
+
+## 应用 v0.2 第一阶段已实现增量
+
+`GET/PATCH /profile`、`GET/PATCH /home-preferences`、`GET /home` 已实现；请求 Schema 导出为 `ProfileInput`、`HomePreferencesInput`。保持既有 `CONTRACT_VERSION=0.2.0`，新增端点不改变原请求。主运行模式 stage 为 `v0.2-phase1`；显式 development 旧 AI 回归模式保留。
+
+- profile 默认从 users 读取昵称/时区，bio=null、version=1、module_fields=[]；GET 不创建配置或事实。首次成功 PATCH 后 version=2。`bio:null` 清空，未传保留；nickname 不能为 null。资料变更同步 `/me` 的昵称与时区，保留历史记录/指标的时区。
+- field upsert 字段为 `id,module_id,key,label,type,kind,value,unit,options`；kind 只允许 profile，值可 null。与记录共享类型校验，decimal 必须字符串。业务 key `session` 合法。模块内 key 唯一，字段 ID 不能跨用户/模块移动；归档/停用模块拒绝新增、修改和删除资料。单包最多 120 字段，显式 `field_remove_ids` 删除，整包原子执行。
+- 偏好固定数值最多 4、任务最多 5；超限 422、重复 ID 400、不可用/他人对象 422。minimal_mode 不清空固定顺序，pinned_trends=[] 只读。
+- 写入复用同一用户锁/幂等回执/变更日志，保留旧配置完整修订；旧版本 409 `VERSION_CONFLICT`，`error.details.current` 给当前配置。配置写入不重算事实、任务或成就；网络未知结果可以沿原键/原包重放，无需另建恢复端点。
+- home 在单一 REPEATABLE READ READ ONLY 事务内读取 cursor、资料、偏好、指标事实、任务及有效授予。metrics 为启用模块内未归档指标，固定项按偏好优先，其余按 created_at/id；保留 definition/computed 和来源 ID。tasks 为用户资料时区的今日 business_date 与固定单次任务去重集合，固定项优先；不生成周期实例。recent_achievements 最近 10 项有效授予，含 definition/module_id/evidence，待复核和归档来源排除。
+- 原对象失效后保留偏好 ID，首页排除对应对象，并返回 `warnings:[{kind:'metric'|'task',id,code:'PIN_UNAVAILABLE'}]`。wallet=null，avatar={enabled:false,model_asset_ref:null}。
+- home/home_preferences/profile_fields=true；ai_chat/ai_recording/ai_profile_update/ai_reward_pricing/avatar_renderer/avatar_redemption/recurring_tasks=false。未来 `/ai/chat`、`/ai/recording`、`/ai/profile-update`、`/ai/reward-pricing`、`/avatar/render`、`/avatar/redeem`、`/wallet` 及其子路径全部拒绝 409 FEATURE_DISABLED；默认 MVP 继续禁止旧 AI 路径。
+- 新迁移仅 `0003_v02_phase1.sql`，新增 user_profiles/profile_fields/home_preferences/configuration_revisions；导出/恢复白名单包含全部新表，备份 schema_version 仍为 1，严格比较迁移清单。旧 v0.1 备份应先用旧代码恢复，再应用 0003；不放宽迁移校验。
+
+后端验收入口：从主 v0.2 目录使用 `sh scripts/agents/compose.sh codex run --rm --no-deps --pull never test sh -c 'node_modules/.bin/tsx packages/db/src/migrate.ts && node_modules/.bin/tsx --test --test-concurrency=1 tests/integration/*.test.ts'`，需先通过相同 wrapper 启动 postgres-test。新增真实 API 夹具见 `tests/integration/v02-home-profile.test.ts`，只允许专用 postgres-test；不写 18080 主库。前端和独立验收交付尚待合入。
