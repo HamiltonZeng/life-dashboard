@@ -25,5 +25,8 @@
 
 ## 阶段核验与后续规划（2026-10-19）
 
+- **最新执行范围**：[第三阶段 v0.1 最小 MVP 收口计划](/Users/zhk/life_dashboard/design/第三阶段_v0.1最小MVP收口计划.md)。第三阶段收敛为本地单用户手动五面板 MVP；未实现功能隐藏入口、保留代码。本计划覆盖下方旧 S2–S5 方案在 v0.1 内的优先级，不抹去原始需求。
+- Agent 任务卡：[Codex](/Users/zhk/life_dashboard/design/tasks/第三阶段_Codex_后端与发布集成.md)、[Gemini](/Users/zhk/life_dashboard/design/tasks/第三阶段_Gemini_可靠记录与界面收口.md)、[DeepSeek](/Users/zhk/life_dashboard/design/tasks/第三阶段_DeepSeek_独立验收与发布文档.md)。用户确认其余会话尚未开始并授权 Codex 补齐，现已完成本机 MVP 收口；具体交付与限制见[第三阶段最终验收](/Users/zhk/life_dashboard/log/2026-10-19_第三阶段最终验收.md)，不宣称独立 agent 审查。
+- [阶段二复核与第三阶段规划记录](/Users/zhk/life_dashboard/log/2026-10-19_阶段二复核与第三阶段规划.md)：阶段二接收状态、本轮复测与收口依据。
 - [阶段一完整开发与核验日志](/Users/zhk/life_dashboard/log/2026-10-19_阶段一完整核验日志.md)：汇总三份开发日志、核对主要实现、重新执行验证，并列出 5 项已复现问题。
 - [下一阶段开发计划与主页提案 v0.1](/Users/zhk/life_dashboard/design/下一阶段开发计划与主页提案_v0.1.md)：质量收口、手机可靠记录、同步、AI 报告与轻量营地首页方案；属于待开发提案。

@@ -13,19 +13,16 @@ const PENDING_OPS_KEY = `${STORAGE_PREFIX}_pending_ops`;
 
 // Fallback in-memory store for non-browser test runners (Node / JSC)
 const memoryFallback = new Map<string, string>();
+let storageIssue:string|null=null;
+let readFailed=false;
+export function getStorageIssue():string|null{return storageIssue;}
 
 function getStore(): {
   getItem(k: string): string | null;
   setItem(k: string, v: string): void;
   removeItem(k: string): void;
 } {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return window.localStorage;
-    }
-  } catch {
-    // Fallback to memory store if localStorage is blocked
-  }
+  if(typeof window!=='undefined')return window.localStorage;
   return {
     getItem: k => memoryFallback.get(k) ?? null,
     setItem: (k, v) => {
@@ -40,9 +37,14 @@ function getStore(): {
 function readJson<T>(key: string, fallback: T): T {
   try {
     const raw = getStore().getItem(key);
+    readFailed=false;
     if (!raw) return fallback;
-    return JSON.parse(raw) as T;
+    const value=JSON.parse(raw);
+    if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid local data');
+    return value as T;
   } catch {
+    readFailed=true;
+    storageIssue='本机存储不可用或内容损坏，输入仅保留在当前页面，请复制后重试。';
     return fallback;
   }
 }
@@ -60,14 +62,18 @@ function hasSensitiveKey(value: unknown, depth = 0): boolean {
   return false;
 }
 
-function writeJson(key: string, value: unknown): void {
+function writeJson(key: string, value: unknown): boolean {
   try {
+    if(readFailed)throw Error('Existing local data could not be read; refusing to overwrite it');
     // Security guard: credentials/session keys must never enter browser storage.
     // A record note that merely contains the word "login_secret" is ordinary user text.
     if (hasSensitiveKey(value)) throw new Error('Refusing to persist sensitive keys in browser storage');
     getStore().setItem(key, JSON.stringify(value));
+    storageIssue=null;
+    return true;
   } catch {
-    // Ignore quota or serialisation errors; the caller keeps the in-memory form state.
+    storageIssue='未保存本机：浏览器存储不可用或空间不足。请复制输入，恢复存储后重试。';
+    return false;
   }
 }
 
@@ -93,6 +99,8 @@ export function computePayloadSignature(input: {
   values: Record<string, string | number | boolean | null>;
   task_ids: string[];
   base_version?: number;
+  occurred_at?: string;
+  timezone?: string;
 }): string {
   const sortedValues: Record<string, unknown> = {};
   for (const k of Object.keys(input.values).sort()) {
@@ -108,6 +116,7 @@ export function computePayloadSignature(input: {
     values: sortedValues,
     task_ids: sortedTasks,
     base_version: input.base_version ?? null
+    ,occurred_at:input.occurred_at??null,timezone:input.timezone??null
   });
 }
 
@@ -120,10 +129,10 @@ export function loadRecordDraft(draftKey: string): PersistedRecordDraft | null {
   return all[draftKey] ?? null;
 }
 
-export function saveRecordDraft(draft: PersistedRecordDraft): void {
+export function saveRecordDraft(draft: PersistedRecordDraft): boolean {
   const all = loadAllRecordDrafts();
   all[draft.draftKey] = draft;
-  writeJson(DRAFTS_KEY, all);
+  return writeJson(DRAFTS_KEY, all);
 }
 
 export function clearRecordDraft(draftKey: string): void {
@@ -143,10 +152,10 @@ export function getPendingMutation(draftKey: string): PendingMutationEnvelope | 
   return all[draftKey] ?? null;
 }
 
-export function savePendingMutation(envelope: PendingMutationEnvelope): void {
+export function savePendingMutation(envelope: PendingMutationEnvelope): boolean {
   const all = loadAllPendingMutations();
   all[envelope.draftKey] = envelope;
-  writeJson(PENDING_OPS_KEY, all);
+  return writeJson(PENDING_OPS_KEY, all);
 }
 
 export function clearPendingMutation(draftKey: string): void {
@@ -163,7 +172,8 @@ export function clearPendingMutation(draftKey: string): void {
  * and the user retries WITHOUT changing the semantic form inputs (`payloadSignature` matches),
  * reuse the EXACT same `operationId` and `frozenPayload` (including `id` and `occurred_at`)
  * so the server's idempotency receipt prevents duplicate record creation.
- * If the user modified any form field, discard the old pending envelope and allocate a new operationId.
+ * Modified working drafts never replace an unconfirmed operation. Confirm the frozen
+ * operation first, then let the user explicitly edit the SAME confirmed record.
  */
 export function prepareRecordMutationEnvelope(params: {
   draftKey: string;
@@ -177,24 +187,24 @@ export function prepareRecordMutationEnvelope(params: {
   recordId: string;
   payload: RecordInput | (Omit<RecordInput, 'id'> & { base_version: number });
   reusedPending: boolean;
+  mode:'create'|'edit';
 } {
   const existing = getPendingMutation(params.draftKey);
-  if (existing && existing.mode === params.mode && existing.payloadSignature === params.signature) {
+  if (existing) {
     return {
       operationId: existing.operationId,
       recordId: existing.recordId,
       payload: existing.frozenPayload,
       reusedPending: true
+      ,mode:existing.mode
     };
-  }
-  if (existing) {
-    clearPendingMutation(params.draftKey);
   }
   return {
     operationId: params.allocateUuid(),
     recordId: params.candidateRecordId,
     payload: params.candidatePayload,
     reusedPending: false
+    ,mode:params.mode
   };
 }
 

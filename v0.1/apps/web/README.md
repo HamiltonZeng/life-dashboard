@@ -1,5 +1,11 @@
 # `@life-dashboard/web` — 前端工作台与 S0-B / S1 自动化核验说明
 
+## v0.1 发布收口（阶段三）
+
+发布默认 MVP：AI/报告入口隐藏，旧子页状态回退；development 的 AI 界面保留。M1–M6 已按 `tests/web-reliability.test.ts` 和 `tests/release/mvp.test.ts` 补齐：先持久化再发送、未知后改值保留旧包、时间/时区纳入签名、存储失败明确不持久化且不发送、固定编辑版本/显式采用基线、验证完整回执。旧 S1-03“改值清理 pending”期望已替换，不能按历史说法另建记录。
+
+正式发布验收改用 `sh scripts/release/verify-mvp.sh`，在 Docker 官方固定浏览器镜像与隔离 API/PostgreSQL 执行，必测项不允许跳过。下方宿主冒烟仅保留作历史开发工具，不是发布门禁。导出与使用边界以根 README 为准。
+
 ## 1. 模块化目录结构 (`S0-B`)
 
 `apps/web/src/` 已从早期单文件拆分为职责清晰的平铺模块（完全兼容根目录 `scripts/build-web.mjs` 的非递归 `src/*.ts` 编译，新模块必须保持平铺）：

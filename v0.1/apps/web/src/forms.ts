@@ -9,6 +9,7 @@ import {
   getPendingMutation,
   loadRecordDraft,
   saveRecordDraft
+  ,getStorageIssue
 } from './storage.js';
 import type { BootstrapData, PersistedRecordDraft } from './types.js';
 
@@ -166,7 +167,7 @@ export function extractRecordFormDraft(
     draftKey,
     mode,
     recordId,
-    baseVersion: mode === 'edit' ? (existingRecord?.version ?? baseVersionAttr) : null,
+    baseVersion: mode === 'edit' ? baseVersionAttr : null,
     moduleId,
     recordTypeId,
     schemaVersion,
@@ -193,15 +194,18 @@ export function bindDynamicModalControllers(
   // Bind live local draft persistence on #ld-form-record
   const recordForm = document.getElementById('ld-form-record') as HTMLFormElement | null;
   if (recordForm) {
+    if(state.submittingModal)recordForm.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('input,select,textarea').forEach(el=>{el.disabled=true;});
     const handleInput = () => {
       const draft = extractRecordFormDraft(recordForm, state, data);
       if (!draft) return;
-      saveRecordDraft(draft);
+      const saved=saveRecordDraft(draft);
       state.recordForm.draftKey = draft.draftKey;
       state.recordForm.recordId = draft.recordId;
-      state.recordForm.lastSavedLocalAt = draft.updatedAt;
+      state.recordForm.lastSavedLocalAt = saved?draft.updatedAt:null;
+      if(!saved){state.recordForm.submissionStatus='validation_error';state.recordForm.validationError={code:'LOCAL_STORAGE_FAILED',message:getStorageIssue()??'未保存本机'};onUpdateStatusBarOnly();return;}
+      state.recordForm.validationError=null;
 
-      // Check if there was a pending unknown-network operation; if user changed inputs, clear old operationId
+      // An unknown operation stays frozen even while its working draft is edited.
       const pending = getPendingMutation(draft.draftKey);
       if (pending) {
         const sig = computePayloadSignature({
@@ -213,11 +217,10 @@ export function bindDynamicModalControllers(
           values: draft.values,
           task_ids: draft.taskIds,
           base_version: draft.baseVersion ?? undefined
+          ,occurred_at:draft.occurredAt,timezone:draft.timezone
         });
         if (sig !== pending.payloadSignature) {
-          clearPendingMutation(draft.draftKey);
-          state.recordForm.operationId = null;
-          state.recordForm.submissionStatus = 'saved_local';
+          state.recordForm.submissionStatus = 'unknown_network';
         }
       } else if (state.recordForm.submissionStatus !== 'conflict_pending') {
         state.recordForm.submissionStatus = 'saved_local';
@@ -356,7 +359,8 @@ export function bindDynamicModalControllers(
   const achModSelect = document.getElementById('ld-ach-module-select') as HTMLSelectElement | null;
   const achMetricSelect = document.getElementById('ld-ach-metric-select') as HTMLSelectElement | null;
   if (achModSelect && achMetricSelect) {
-    achModSelect.onchange = () => {
+    const syncAchievementMetrics = () => {
+      const selected=achMetricSelect.value;
       const metrics = data.metrics.filter(m => m.module_id === achModSelect.value);
       achMetricSelect.innerHTML =
         metrics.length === 0
@@ -367,7 +371,12 @@ export function bindDynamicModalControllers(
                   `<option value="${escapeHtml(m.id)}">${escapeHtml(m.definition.name)} (${escapeHtml(m.definition.unit)})</option>`
               )
               .join('');
+      if(metrics.some(m=>m.id===selected))achMetricSelect.value=selected;
+      const submit=document.querySelector<HTMLButtonElement>('#ld-form-create-achievement button[type=submit]');
+      if(submit)submit.disabled=state.submittingModal||metrics.length===0;
     };
+    achModSelect.onchange=syncAchievementMetrics;
+    syncAchievementMetrics();
   }
 
   // AI generation modal mode-dependent groups

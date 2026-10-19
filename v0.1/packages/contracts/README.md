@@ -1,5 +1,7 @@
 # API 契约 0.2.0（T0/T1 后端 + T2/T3 AI 生成）
 
+**v0.1 发布模式覆盖说明：**默认 `APP_PROFILE=mvp`，AI 能力关闭；AI config GET 返回禁用状态，其他 AI GET/写接口统一 409 `FEATURE_DISABLED`，且不初始化供应商、不创建 job。`development` 显式保留下文旧 AI 契约。详见 [MVP_CONTRACT](../../docs/MVP_CONTRACT.md)，前端以 capability 为准；请求契约版本和两项迁移未改变。
+
 请求权威定义为 `src/index.ts`；导出文件 `request-schemas.json`、`openapi.json` 可供非 TypeScript 客户端读取。重新导出必须在 tools 容器运行 `corepack pnpm contracts:export`。API 冻结的是本阶段可用子集；模块蓝图 1.0 的权威 Schema 仍是 `design/人生面板_AI模块蓝图.schema.json`，它是模型输出规范，不是直接对外提交的任意配置写入接口。
 
 ## 基础约定

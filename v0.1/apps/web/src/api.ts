@@ -45,7 +45,7 @@ export function isUnknownNetworkError(err: unknown): boolean {
     return true;
   }
   return (
-    err.status === 0 ||
+    err.status === 0 ||err.status>=500 ||
     err.status === 502 ||
     err.status === 503 ||
     err.status === 504 ||
@@ -97,10 +97,12 @@ async function request<T>(
     });
   }
 
-  const payload = (await res.json().catch(() => ({}))) as {
+  let payload: {
     data?: T;
     error?: ApiErrorShape;
+    operation_id?:string;
   };
+  try {payload=await res.json();}catch{throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'未收到可验证的服务器回执，请保留原操作后重试确认'});}
 
   if (!res.ok) {
     throw new ApiClientError(
@@ -112,6 +114,18 @@ async function request<T>(
     );
   }
 
+  if(!payload || typeof payload!=='object' || payload.data===undefined)throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'服务器回执不完整，尚未确认保存'});
+  if(method!=='GET'&&!isSessionEndpoint && !path.startsWith('/ai/')) {
+    const data=payload.data as any;
+    const expectedId=(body as any)?.id??path.split('/')[2];
+    const version=path==='/record-types'?data?.schema_version:data?.version;
+    if(!data || typeof data.id!=='string' || !Number.isInteger(version) || version<1 || (expectedId&&data.id!==expectedId) || payload.operation_id!==headers['Idempotency-Key'])throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'保存回执缺少正确操作、记录与版本，尚未确认'});
+    if(path.startsWith('/records')&&method!=='DELETE') {
+      const sent=body as any;
+      if(data.module_id!==sent.module_id||data.record_type_id!==sent.record_type_id||data.schema_version!==sent.schema_version||!data.values||typeof data.values!=='object'||!Array.isArray(data.task_ids)||Date.parse(data.occurred_at)!==Date.parse(sent.occurred_at)||data.timezone!==sent.timezone||data.status!==sent.status)throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'记录确认字段不完整，请保留原提交后重试确认'});
+    }
+    if(path.startsWith('/records/')&&method==='DELETE'&&(typeof data.deleted_at!=='string'||!Number.isFinite(Date.parse(data.deleted_at))))throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'删除回执不完整，请刷新核对记录状态'});
+  }
   return payload.data as T;
 }
 

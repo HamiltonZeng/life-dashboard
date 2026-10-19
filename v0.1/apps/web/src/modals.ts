@@ -48,7 +48,7 @@ function findAward(data: BootstrapData, achievementId: string): AchievementAward
   return data.achievement_awards.find(a => a.achievement_id === achievementId);
 }
 
-function renderSubmissionStatusPill(state: AppState): string {
+export function renderSubmissionStatusPill(state: AppState): string {
   const rf = state.recordForm;
   const meta = SUBMISSION_STATE_META[rf.submissionStatus] ?? SUBMISSION_STATE_META.idle;
   const badgeClass =
@@ -64,13 +64,13 @@ function renderSubmissionStatusPill(state: AppState): string {
 
   return `<div class="ld-draft-status-bar" data-submission-status="${escapeHtml(rf.submissionStatus)}">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span class="ld-badge ${badgeClass}">${escapeHtml(meta.label)}</span>
-      <span style="color:var(--ld-text-secondary);">${escapeHtml(meta.description)}</span>
+      <span class="ld-badge ${badgeClass}">${escapeHtml(rf.validationError?.code==='LOCAL_STORAGE_FAILED'?'未保存本机':meta.label)}</span>
+      <span style="color:var(--ld-text-secondary);">${escapeHtml(rf.validationError?.code==='LOCAL_STORAGE_FAILED'?rf.validationError.message:meta.description)}</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       ${
         rf.operationId
-          ? `<code style="font-size:11px;color:var(--ld-text-muted);">operation_id: ${escapeHtml(rf.operationId.slice(0, 12))}…</code>`
+          ? `<details><summary>提交诊断</summary><code style="font-size:11px;color:var(--ld-text-muted);">operation_id: ${escapeHtml(rf.operationId.slice(0, 12))}…</code></details>`
           : ''
       }
       ${
@@ -96,6 +96,7 @@ function renderModalConflictPanel(state: AppState): string {
       </div>
       <div style="display:flex;gap:6px;">
         <button type="button" class="ld-btn ld-btn-sm" data-action="conflict-pull-latest">拉取服务器最新版本</button>
+        ${serverRec?'<button type="button" class="ld-btn ld-btn-sm" data-action="conflict-adopt-version">采用此版本作为编辑基线</button>':''}
       </div>
     </div>
     <div style="color:var(--ld-text-secondary);font-size:12px;">
@@ -330,11 +331,11 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
     const valError = state.recordForm.validationError;
 
     return `<div class="ld-modal-backdrop" data-action="close-modal-backdrop">
-      <form class="ld-modal" id="ld-form-record" data-mode="${modal.mode}" data-record-id="${escapeHtml(editingRecord?.id ?? modal.recordId ?? '')}" data-draft-key="${escapeHtml(draftKey)}" data-base-version="${escapeHtml(String(editingRecord?.version ?? savedDraft?.baseVersion ?? 1))}">
+      <form class="ld-modal" id="ld-form-record" data-mode="${modal.mode}" data-record-id="${escapeHtml(editingRecord?.id ?? modal.recordId ?? '')}" data-draft-key="${escapeHtml(draftKey)}" data-base-version="${escapeHtml(String(state.recordForm.baseVersion ?? savedDraft?.baseVersion ?? editingRecord?.version ?? 1))}">
         <div class="ld-modal-header">
           <div>
             <h2 class="ld-modal-title">${modal.mode === 'edit' ? '编辑真实记录' : '新建真实记录'}</h2>
-            <div class="ld-card-meta">支持本机持久草稿、稳定 operation_id 重放与 409 冲突输入保留</div>
+            <div class="ld-card-meta">先保存本机草稿，再向服务器确认；未确认的内容请保留。</div>
           </div>
           <button type="button" class="ld-btn ld-btn-sm" data-action="close-modal">✕</button>
         </div>
@@ -350,7 +351,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
             pendingOp
               ? `<div class="ld-return-banner" style="background:var(--ld-warning-soft);border-color:rgba(245,158,11,0.5);">
                   <div>
-                    <strong>待重试操作（未知网络结果保护）：</strong>上次提交未收到服务器确认回执。直接点击下方「重试提交（同 operation_id）」将重放同一 <code>operation_id (${escapeHtml(pendingOp.operationId.slice(0, 8))}…)</code> 与完整载荷，确保不重复记账。
+                    <strong>上次提交结果待确认：</strong>请先确认上次提交；当前修改会保留，确认后可保存到同一条记录。
                   </div>
                 </div>`
               : ''
@@ -368,7 +369,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">所属模块 *</span>
-              <select class="ld-select" name="module_id" id="ld-record-module-select" ${modal.mode === 'edit' ? 'disabled' : ''} required>
+              <select class="ld-select" name="module_id" id="ld-record-module-select" ${modal.mode === 'edit'||pendingOp ? 'disabled' : ''} required>
                 ${enabledModules
                   .map(
                     m =>
@@ -379,7 +380,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
             </label>
             <label class="ld-field">
               <span class="ld-label">记录模板 *</span>
-              <select class="ld-select" name="record_type_id" id="ld-record-template-select" ${modal.mode === 'edit' ? 'disabled' : ''} required>
+              <select class="ld-select" name="record_type_id" id="ld-record-template-select" ${modal.mode === 'edit'||pendingOp ? 'disabled' : ''} required>
                 ${data.record_types
                   .filter(rt => rt.module_id === actualModId)
                   .map(
@@ -497,12 +498,13 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
               state.submittingModal
                 ? '等待服务器确认…'
                 : pendingOp
-                  ? '重试提交（同 operation_id）'
+                  ? '确认上次提交'
                   : modal.mode === 'edit'
                     ? '保存修改并重算'
                     : '保存记录'
             }
           </button>
+          <button type="button" class="ld-btn" data-action="copy-record-draft">复制输入</button>
         </div>
       </form>
     </div>`;

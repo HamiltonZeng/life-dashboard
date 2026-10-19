@@ -234,6 +234,7 @@ export interface PendingMutationEnvelope {
 }
 
 export interface RecordFormRuntimeState {
+  baseVersion?:number|null;
   draftKey: string;
   submissionStatus: SubmissionStateKind;
   operationId: string | null;

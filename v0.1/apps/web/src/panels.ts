@@ -154,6 +154,7 @@ function renderReturnBanner(state: AppState): string {
 }
 
 export function renderTasksPanel(state: AppState, data: BootstrapData): string {
+  const aiEnabled=state.capabilities?.ai_generation===true;
   const p = state.panels.tasks;
   const countsByModule: Record<string, number> = {};
   for (const m of data.modules) countsByModule[m.id] = 0;
@@ -180,7 +181,7 @@ export function renderTasksPanel(state: AppState, data: BootstrapData): string {
         description: '你可以手动创建手动完成、记录可选或必须关联记录的任务实例，体验「任务 → 记录 → 数值 → 成就」真实写库闭环。',
         primaryActionLabel: '＋ 新建任务',
         primaryActionData: 'data-action="open-create-task"',
-        secondaryActionLabel: '✦ AI 生成配置',
+        secondaryActionLabel: aiEnabled?'✦ AI 生成配置':undefined,
         secondaryActionData: 'data-action="open-ai-modal"'
       })
     : `<div class="ld-card-list">
@@ -268,7 +269,7 @@ export function renderTasksPanel(state: AppState, data: BootstrapData): string {
         <p class="ld-panel-subtitle">管理各模块待办事项，支持手动完成、记录可选与必须关联真实记录三种验收方式</p>
       </div>
       <div class="ld-panel-actions">
-        <button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="tasks">✦ AI 生成</button>
+        ${aiEnabled?'<button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="tasks">✦ AI 生成</button>':''}
         <button type="button" class="ld-btn ld-btn-primary" data-action="open-create-task">＋ 新建任务</button>
       </div>
     </header>
@@ -294,6 +295,7 @@ export function renderTasksPanel(state: AppState, data: BootstrapData): string {
 }
 
 export function renderRecordsPanel(state: AppState, data: BootstrapData): string {
+  if(state.panels.records.subTab==='ai_review')state.panels.records.subTab='list';
   const p = state.panels.records;
   const countsByModule: Record<string, number> = {};
   for (const m of data.modules) countsByModule[m.id] = 0;
@@ -443,7 +445,6 @@ export function renderRecordsPanel(state: AppState, data: BootstrapData): string
       <div class="ld-tab-group" role="tablist" aria-label="记录视图切换">
         <button type="button" class="ld-tab-btn ${p.subTab === 'list' ? 'is-active' : ''}" data-action="panel-subtab" data-subtab="list">列表视图</button>
         <button type="button" class="ld-tab-btn ${p.subTab === 'timeline' ? 'is-active' : ''}" data-action="panel-subtab" data-subtab="timeline">时间线视图</button>
-        <button type="button" class="ld-tab-btn ${p.subTab === 'ai_review' ? 'is-active' : ''}" data-action="panel-subtab" data-subtab="ai_review">AI 复盘</button>
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <select class="ld-select" style="width:auto;" data-action="filter-record-template" aria-label="按记录模板筛选">
@@ -467,6 +468,7 @@ export function renderRecordsPanel(state: AppState, data: BootstrapData): string
 }
 
 export function renderMetricsPanel(state: AppState, data: BootstrapData): string {
+  const aiEnabled=state.capabilities?.ai_generation===true;
   const p = state.panels.metrics;
   const countsByModule: Record<string, number> = {};
   for (const m of data.modules) countsByModule[m.id] = 0;
@@ -487,7 +489,7 @@ export function renderMetricsPanel(state: AppState, data: BootstrapData): string
         description: '支持对指定记录模板进行 count（计数）、sum（求和）、avg（均值）、latest（最新值）精确聚合，无数据时如实显示「暂无数据」而非 0。',
         primaryActionLabel: '＋ 新建数值定义',
         primaryActionData: 'data-action="open-create-metric"',
-        secondaryActionLabel: '✦ AI 生成配置',
+        secondaryActionLabel: aiEnabled?'✦ AI 生成配置':undefined,
         secondaryActionData: 'data-action="open-ai-modal"'
       })
     : `<div class="ld-card-grid">
@@ -552,7 +554,7 @@ export function renderMetricsPanel(state: AppState, data: BootstrapData): string
         <p class="ld-panel-subtitle">基于已确认唯一记录与十进制精确运算，展示日 / 周 / 月 / 累计统计窗口</p>
       </div>
       <div class="ld-panel-actions">
-        <button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="metrics">✦ AI 生成</button>
+        ${aiEnabled?'<button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="metrics">✦ AI 生成</button>':''}
         <button type="button" class="ld-btn ld-btn-primary" data-action="open-create-metric">＋ 新建数值定义</button>
       </div>
     </header>
@@ -578,6 +580,7 @@ export function renderMetricsPanel(state: AppState, data: BootstrapData): string
 }
 
 export function renderAchievementsPanel(state: AppState, data: BootstrapData): string {
+  const aiEnabled=state.capabilities?.ai_generation===true;
   const p = state.panels.achievements;
   const countsByModule: Record<string, number> = {};
   for (const m of data.modules) countsByModule[m.id] = 0;
@@ -601,7 +604,7 @@ export function renderAchievementsPanel(state: AppState, data: BootstrapData): s
         description: '成就不由 AI 直接标记完成，而是绑定某个数值定义与门槛，在真实记录达标时由规则引擎自动授予。',
         primaryActionLabel: '＋ 新建成就定义',
         primaryActionData: 'data-action="open-create-achievement"',
-        secondaryActionLabel: '✦ AI 生成配置',
+        secondaryActionLabel: aiEnabled?'✦ AI 生成配置':undefined,
         secondaryActionData: 'data-action="open-ai-modal"'
       })
     : `<div class="ld-card-grid">
@@ -688,7 +691,7 @@ export function renderAchievementsPanel(state: AppState, data: BootstrapData): s
         <p class="ld-panel-subtitle">定义与授予分离，由真实记录驱动解锁；当唯一完成证据被修改或删除时自动标记「待复核」</p>
       </div>
       <div class="ld-panel-actions">
-        <button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="achievements">✦ AI 生成</button>
+        ${aiEnabled?'<button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="achievements">✦ AI 生成</button>':''}
         <button type="button" class="ld-btn ld-btn-primary" data-action="open-create-achievement">＋ 新建成就定义</button>
       </div>
     </header>
@@ -714,6 +717,8 @@ export function renderAchievementsPanel(state: AppState, data: BootstrapData): s
 
 export function renderSettingsPanel(state: AppState, data: BootstrapData): string {
   const p = state.panels.settings;
+  const aiEnabled=state.capabilities?.ai_generation===true;
+  if(p.subTab==='ai'&&!aiEnabled)p.subTab='modules';
   const subTab = p.subTab || 'modules';
 
   let sectionHtml = '';
@@ -951,8 +956,8 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
       <div class="ld-card">
         <div class="ld-card-top">
           <div>
-            <h3 class="ld-card-title">本地开发会话与阶段能力矩阵</h3>
-            <p class="ld-panel-subtitle">HttpOnly + SameSite=Strict Cookie 会话，所有写操作强制携带 UUID 幂等键与基准版本号</p>
+            <h3 class="ld-card-title">本地账户</h3>
+            <p class="ld-panel-subtitle">仅在本机使用；退出后需重新登录。</p>
           </div>
           <button type="button" class="ld-btn ld-btn-danger" data-action="logout">退出当前会话</button>
         </div>
@@ -981,7 +986,7 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
             <span>cloud_ai: <strong>${String(state.capabilities?.cloud_ai ?? false)}</strong></span> ·
             <span>recurring_tasks: <strong>${String(state.capabilities?.recurring_tasks ?? false)}</strong></span>
           </div>
-          <button type="button" class="ld-btn ld-btn-sm" data-action="refresh-bootstrap">立即刷新一致性快照</button>
+          <button type="button" class="ld-btn ld-btn-sm" data-action="refresh-bootstrap">刷新服务器数据</button>
         </div>
       </div>
     </div>`;
@@ -993,7 +998,7 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
     <header class="ld-panel-header">
       <div class="ld-panel-title-group">
         <h1 class="ld-panel-title">设置面板</h1>
-        <p class="ld-panel-subtitle">管理模块生命周期、记录模板、内容依赖关系、AI 生成配置、显示偏好与本地账户会话</p>
+        <p class="ld-panel-subtitle">管理模块、记录模板、内容依赖、显示偏好与本地账户会话</p>
       </div>
     </header>
     <div class="ld-subfilter-bar">
@@ -1005,6 +1010,7 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
           { key: 'display', label: '显示与反馈' },
           { key: 'account', label: '账户与数据' }
         ]
+          .filter(t=>t.key!=='ai'||aiEnabled)
           .map(
             t =>
               `<button type="button" class="ld-tab-btn ${subTab === t.key ? 'is-active' : ''}" data-action="panel-subtab" data-subtab="${t.key}">${escapeHtml(t.label)}</button>`

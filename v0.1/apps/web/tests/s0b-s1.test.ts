@@ -852,12 +852,12 @@ export async function runAllWebVerificationTests(): Promise<TestCaseResult[]> {
     state.recordForm.operationId = env2.operationId;
     const modalHtml = renderActiveModal(state, data);
     assert(modalHtml.includes(SUBMISSION_STATE_META.unknown_network.label), 'Modal renders 网络结果未知（待重试） status badge', c);
-    assert(modalHtml.includes('重试提交（同 operation_id）'), 'Submit button shows idempotent retry label', c);
+    assert(modalHtml.includes('确认上次提交'), 'Submit button clearly confirms the retained prior operation', c);
     return '断网/超时进入 unknown_network 状态后，未修改表单内容直接重试严格复用同一 operation_id 与记录 ID，防止重复记账。';
   });
 
   // 11. S1 #3: Modifying form fields after unknown network error rotates a fresh operation_id
-  await runCase('S1-03', 'S1', '未知网络状态后用户主动修改表单字段时自动清理旧挂起包并分配新 operation_id', (c) => {
+  await runCase('S1-03', 'S1', '未知结果后修改工作草稿仍保留旧操作，先确认原结果', (c) => {
     const draftKey = buildRecordDraftKey({
       mode: 'create',
       moduleId: 'mod-study',
@@ -920,10 +920,10 @@ export async function runAllWebVerificationTests(): Promise<TestCaseResult[]> {
       allocateUuid: () => 'op-fresh-222'
     });
 
-    assert(envNew.reusedPending === false, 'Modified payload does not reuse old frozen envelope', c);
-    assert(envNew.operationId === 'op-fresh-222', 'Allocates fresh operation_id (op-fresh-222)', c);
-    assert(getPendingMutation(draftKey) === null, 'Old pending mutation cleared from storage', c);
-    return '当用户在 unknown_network 状态后修改了任意业务字段（如时长 20→45），签名变化会自动清理旧挂起包并分配新 operation_id。';
+    assert(envNew.reusedPending === true, 'Unconfirmed operation is reused despite changed working draft', c);
+    assert(envNew.operationId === 'op-old-111', 'Original operation_id is preserved', c);
+    assert(getPendingMutation(draftKey)?.recordId === 'rec-1', 'Original target is preserved until confirmed', c);
+    return '先确认原操作，再对同一条记录显式保存当前修改。';
   });
 
   // 12. S1 #4: Minimal user-data export UI (`GET /api/v1/export` download)

@@ -20,7 +20,7 @@ import {
   extractRecordFormDraft,
   restoreActiveFormSnapshot
 } from './forms.js';
-import { renderActiveModal } from './modals.js';
+import { renderActiveModal,renderSubmissionStatusPill } from './modals.js';
 import {
   renderAchievementsPanel,
   renderMetricsPanel,
@@ -47,6 +47,7 @@ import {
   savePendingMutation,
   saveRecordDraft,
   saveUiPreferences
+  ,getStorageIssue
 } from './storage.js';
 import type {
   AiApplyMode,
@@ -146,37 +147,7 @@ function renderToastsOnly(): void {
 function updateRecordStatusBarOnly(): void {
   const bar = document.querySelector('#ld-form-record .ld-draft-status-bar');
   if (!bar) return;
-  const rf = state.recordForm;
-  const meta = SUBMISSION_STATE_META[rf.submissionStatus] ?? SUBMISSION_STATE_META.idle;
-  const badgeClass =
-    meta.tone === 'success'
-      ? 'ld-badge-success'
-      : meta.tone === 'warning'
-        ? 'ld-badge-warning'
-        : meta.tone === 'danger'
-          ? 'ld-badge-danger'
-          : meta.tone === 'info'
-            ? 'ld-badge-info'
-            : '';
-  bar.setAttribute('data-submission-status', rf.submissionStatus);
-  bar.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span class="ld-badge ${badgeClass}">${escapeHtml(meta.label)}</span>
-      <span style="color:var(--ld-text-secondary);">${escapeHtml(meta.description)}</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      ${
-        rf.operationId
-          ? `<code style="font-size:11px;color:var(--ld-text-muted);">operation_id: ${escapeHtml(rf.operationId.slice(0, 12))}…</code>`
-          : ''
-      }
-      ${
-        rf.restoredFromStorage || rf.submissionStatus === 'saved_local' || rf.submissionStatus === 'unknown_network'
-          ? `<button type="button" class="ld-btn ld-btn-sm" data-action="discard-record-draft">丢弃本地草稿</button>`
-          : ''
-      }
-    </div>
-  `;
+  bar.outerHTML=renderSubmissionStatusPill(state);
 }
 
 export function renderModalRegionOnly(preserveInput = false): void {
@@ -297,6 +268,7 @@ function prepareRecordFormModal(params: {
   const pendingOp = getPendingMutation(draftKey);
 
   state.recordForm = {
+    baseVersion:savedDraft?.baseVersion??(params.mode==='edit'?state.bootstrap?.records.find(r=>r.id===params.recordId)?.version:null),
     draftKey,
     submissionStatus: pendingOp
       ? 'unknown_network'
@@ -349,7 +321,7 @@ function renderLoginScreen(): string {
         <span class="ld-brand-emblem">L</span>
         <div>
           <h1 style="margin:0;font-size:18px;font-weight:700;">人生面板 Life Dashboard</h1>
-          <div style="font-size:12px;color:var(--ld-text-secondary);">v0.1 本地开发会话入口 (${escapeHtml(state.capabilities?.stage ?? 'T2/T3-ai')})</div>
+          <div style="font-size:12px;color:var(--ld-text-secondary);">v0.1 · 本机单用户记录</div>
         </div>
       </div>
       <p style="margin:0;font-size:13px;color:var(--ld-text-secondary);line-height:1.6;">
@@ -632,6 +604,7 @@ function extractAiJobId(details: unknown): string | null {
 }
 
 async function loadAiConfig(): Promise<void> {
+  if(!state.capabilities?.ai_generation)return;
   state.ai.configLoading = true;
   state.ai.configError = null;
   if (state.route === '/settings' || state.activeModal?.kind === 'ai-generate') {
@@ -650,6 +623,7 @@ async function loadAiConfig(): Promise<void> {
 }
 
 async function loadAiJobs(): Promise<void> {
+  if(!state.capabilities?.ai_generation)return;
   state.ai.jobsLoading = true;
   state.ai.jobsError = null;
   if (state.route === '/settings') {
@@ -903,7 +877,7 @@ function setupEventDelegation(): void {
 
     if (action === 'refresh-bootstrap') {
       try {
-        await refreshBootstrapAndNotify('已同步最新服务端一致性快照', false, true);
+        await refreshBootstrapAndNotify('已刷新服务器数据', false, true);
       } catch (err) {
         handleApiError(err);
       }
@@ -958,9 +932,9 @@ function setupEventDelegation(): void {
 
     if (action === 'discard-record-draft') {
       const key = state.recordForm.draftKey;
+      if(key&&getPendingMutation(key)){pushToast('还有待确认的提交','请先确认上次结果；丢弃草稿不能撤销已发送的记录。','warning');return;}
       if (key) {
         clearRecordDraft(key);
-        clearPendingMutation(key);
       }
       state.recordForm = {
         ...createInitialRecordFormState(),
@@ -997,10 +971,6 @@ function setupEventDelegation(): void {
           const srv = fresh.records.find(r => r.id === state.activeModal?.kind && false) ??
             fresh.records.find(r => r.id === (state.activeModal as { recordId?: string }).recordId);
           state.recordForm.conflictServerRecord = srv ?? null;
-          if (srv) {
-            const form = document.getElementById('ld-form-record');
-            if (form) form.setAttribute('data-base-version', String(srv.version));
-          }
         }
         renderModalRegionOnly(true);
         pushToast('已拉取服务器最新版本', '你可以核对服务器最新值后重新提交，或点击丢弃本地草稿', 'info');
@@ -1009,6 +979,14 @@ function setupEventDelegation(): void {
       }
       return;
     }
+
+    if(action==='conflict-adopt-version'&&data){
+      const srv=state.recordForm.conflictServerRecord;
+      const form=document.getElementById('ld-form-record') as HTMLFormElement|null;
+      if(srv&&form){form.setAttribute('data-base-version',String(srv.version));state.recordForm.baseVersion=srv.version;state.recordForm.conflictError=null;state.recordForm.submissionStatus='saved_local';const draft=extractRecordFormDraft(form,state,data);if(draft)saveRecordDraft(draft);renderModalRegionOnly(true);pushToast('已采用新版本作为编辑基线','本地输入仍保留，请核对后提交修改。','info');}
+      return;
+    }
+    if(action==='copy-record-draft'&&data){const form=document.getElementById('ld-form-record') as HTMLFormElement|null;if(form){const draft=extractRecordFormDraft(form,state,data);try{await navigator.clipboard.writeText(JSON.stringify(draft,null,2));pushToast('已复制输入','请保存在安全位置。','info');}catch{pushToast('无法访问剪贴板','请直接选择表单内容复制，输入仍在当前页面。','warning');}}return;}
 
     if (action === 'return-context' && state.returnContext) {
       const ctx = state.returnContext;
@@ -1577,7 +1555,10 @@ function setupEventDelegation(): void {
       const draft = extractRecordFormDraft(form, state, data);
       if (!draft) return;
 
-      saveRecordDraft(draft);
+      if(!saveRecordDraft(draft)){
+        state.recordForm.submissionStatus='validation_error';state.recordForm.validationError={code:'LOCAL_STORAGE_FAILED',message:getStorageIssue()??'未保存本机，尚未发送请求'};
+        renderModalRegionOnly(true);return;
+      }
       const signature = computePayloadSignature({
         mode: draft.mode,
         module_id: draft.moduleId,
@@ -1587,6 +1568,7 @@ function setupEventDelegation(): void {
         values: draft.values,
         task_ids: draft.taskIds,
         base_version: draft.baseVersion ?? undefined
+        ,occurred_at:draft.occurredAt,timezone:draft.timezone
       });
 
       const candidatePayload: RecordInput | (Omit<RecordInput, 'id'> & { base_version: number }) =
@@ -1623,6 +1605,13 @@ function setupEventDelegation(): void {
         allocateUuid: generateUuid
       });
 
+      const previous=getPendingMutation(draft.draftKey);
+      const pending={draftKey:draft.draftKey,operationId:prepared.operationId,recordId:prepared.recordId,mode:prepared.mode,payloadSignature:previous?.payloadSignature??signature,frozenPayload:prepared.payload,lastError:{code:'AWAITING_RECEIPT',message:'等待服务器确认'},savedAt:previous?.savedAt??new Date().toISOString()};
+      if(!savePendingMutation(pending)){
+        state.recordForm.submissionStatus='validation_error';state.recordForm.validationError={code:'LOCAL_STORAGE_FAILED',message:getStorageIssue()??'待确认操作未能保存本机，未发送请求'};
+        renderModalRegionOnly(true);return;
+      }
+
       state.submittingModal = true;
       state.recordForm.submissionStatus = 'submitting';
       state.recordForm.operationId = prepared.operationId;
@@ -1632,54 +1621,28 @@ function setupEventDelegation(): void {
       state.modalError = null;
       renderModalRegionOnly(true);
 
+      let confirmed:import('./types.js').RecordRow;
       try {
-        if (draft.mode === 'edit') {
-          await api.updateRecord(
+        if (prepared.mode === 'edit') {
+          confirmed=await api.updateRecord(
             prepared.recordId,
             prepared.payload as Omit<RecordInput, 'id'> & { base_version: number },
             prepared.operationId
           );
-          clearRecordDraft(draft.draftKey);
-          clearPendingMutation(draft.draftKey);
-          state.submittingModal = false;
-          state.recordForm.submissionStatus = 'confirmed_server';
-          state.activeModal = null;
-          await refreshBootstrapAndNotify(
-            `服务器已确认记录修改（operation_id: ${prepared.operationId.slice(0, 8)}…）`,
-            true
-          );
         } else {
-          await api.createRecord(prepared.payload as RecordInput, prepared.operationId);
-          clearRecordDraft(draft.draftKey);
-          clearPendingMutation(draft.draftKey);
-          state.submittingModal = false;
-          state.recordForm.submissionStatus = 'confirmed_server';
-          state.activeModal = null;
-          await refreshBootstrapAndNotify(
-            `服务器已确认保存真实记录（operation_id: ${prepared.operationId.slice(0, 8)}…）`,
-            true
-          );
+          confirmed=await api.createRecord(prepared.payload as RecordInput, prepared.operationId);
         }
       } catch (err) {
         state.submittingModal = false;
         if (isUnknownNetworkError(err)) {
           // S1: Unknown network result -> keep exact operationId & frozenPayload for safe idempotent retry
           const errMsg = err instanceof Error ? err.message : '网络结果未知';
-          savePendingMutation({
-            draftKey: draft.draftKey,
-            operationId: prepared.operationId,
-            recordId: prepared.recordId,
-            mode: draft.mode,
-            payloadSignature: signature,
-            frozenPayload: prepared.payload,
-            lastError: { code: 'NETWORK_UNKNOWN', message: errMsg },
-            savedAt: new Date().toISOString()
-          });
+          savePendingMutation({...pending,lastError:{code:'NETWORK_UNKNOWN',message:errMsg}});
           state.recordForm.submissionStatus = 'unknown_network';
           renderModalRegionOnly(true);
           pushToast(
             '网络结果未知（已保留本机草稿）',
-            `未收到服务器回执。点击重试将沿用同一 operation_id (${prepared.operationId.slice(0, 8)}…) 重放，不会重复记账`,
+            '未收到服务器回执。请先确认上次提交，当前修改将单独保留，不会另建一条记录。',
             'warning'
           );
           return;
@@ -1710,7 +1673,25 @@ function setupEventDelegation(): void {
         };
         renderModalRegionOnly(true);
         pushToast(`校验未通过 (${desc.code ?? 'ERROR'})`, desc.message, 'warning');
+        return;
       }
+      state.submittingModal=false;
+      // Confirmation and refreshing the list are separate operations. A failed GET
+      // must never reclassify an already acknowledged write as an unknown mutation.
+      if(previous&&previous.payloadSignature!==signature){
+        const editKey=buildRecordDraftKey({mode:'edit',recordId:confirmed.id,moduleId:draft.moduleId,recordTypeId:draft.recordTypeId});
+        const working={...draft,draftKey:editKey,mode:'edit' as const,recordId:confirmed.id,baseVersion:confirmed.version};
+        if(!saveRecordDraft(working)){
+          state.recordForm.submissionStatus='validation_error';state.recordForm.validationError={code:'LOCAL_STORAGE_FAILED',message:'上次记录已在服务器确认；当前修改未保存本机，请复制输入后重试。'};renderModalRegionOnly(true);return;
+        }
+        clearPendingMutation(draft.draftKey);if(editKey!==draft.draftKey)clearRecordDraft(draft.draftKey);
+        try{state.bootstrap=await api.getBootstrap();}catch{if(state.bootstrap&&!state.bootstrap.records.some(r=>r.id===confirmed.id))state.bootstrap.records.push(confirmed);}
+        prepareRecordFormModal({mode:'edit',recordId:confirmed.id,defaultModuleId:draft.moduleId,defaultRecordTypeId:draft.recordTypeId,defaultTaskIds:draft.taskIds});
+        renderApp();pushToast('上次提交已确认','当前修改仍是草稿，请核对后保存到同一条记录。','info');return;
+      }
+      clearPendingMutation(draft.draftKey);clearRecordDraft(draft.draftKey);
+      state.recordForm.submissionStatus='confirmed_server';state.activeModal=null;
+      try{await refreshBootstrapAndNotify('服务器已确认保存记录',true);}catch{renderApp();pushToast('记录已确认，列表刷新失败','记录已经保存；请刷新列表，无需重新创建。','warning');}
       return;
     }
 
