@@ -82,7 +82,9 @@ const BUSINESS_VALUE_MAP_KEYS = new Set([
   'values',
   'rawInputs',
   'fieldValues',
-  'rawFieldInputs'
+  'rawFieldInputs',
+  'context_values',
+  'contextValues'
 ]);
 
 function isPrimitiveBusinessValue(val: unknown): boolean {

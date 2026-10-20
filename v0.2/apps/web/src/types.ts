@@ -53,11 +53,18 @@ export interface CapabilitiesData {
   ai_preview?: boolean;
   user_export?: boolean;
   user_restore?: string;
-  // v0.2 Phase 1 capability flags
+  // v0.2 Phase 1 & Phase 2 capability flags
   home?: boolean;
   home_preferences?: boolean;
   profile_fields?: boolean;
+  trends?: boolean;
+  achievement_milestones?: boolean;
+  token_wallet?: boolean;
+  profile_observations?: boolean;
   ai_chat?: boolean;
+  ai_task_generation?: boolean;
+  ai_metric_analysis?: boolean;
+  ai_achievement_generation?: boolean;
   ai_recording?: boolean;
   ai_profile_update?: boolean;
   ai_reward_pricing?: boolean;
@@ -90,6 +97,96 @@ export interface RecordTypeRow {
   created_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// v0.2 Phase 2: Periodic Tasks, Templates, Rules & Reward Summary
+// ---------------------------------------------------------------------------
+
+export type TaskCategory = 'main' | 'daily' | 'weekly' | 'monthly';
+export type TaskColor = ModuleColorName | string;
+
+export interface TaskRuleFilter {
+  field_key: string;
+  operator: 'eq' | 'gte' | 'lte';
+  value: string | number | boolean | null;
+}
+
+export type TaskRule =
+  | { kind: 'linked_exists'; record_type_id: string }
+  | { kind: 'linked_field_gte'; record_type_id: string; field_key: string; threshold: string }
+  | { kind: 'count'; record_type_id: string; threshold: string; filters?: TaskRuleFilter[] }
+  | { kind: 'distinct_days'; record_type_id: string; threshold: string; filters?: TaskRuleFilter[] }
+  | {
+      kind: 'sum';
+      record_type_id: string;
+      field_key: string;
+      unit: string;
+      threshold: string;
+      filters?: TaskRuleFilter[];
+    };
+
+export interface TaskTemplateInput {
+  id: string;
+  module_id: string;
+  title: string;
+  category: TaskCategory;
+  timezone: string;
+  completion_mode: 'manual' | 'record_optional' | 'record_required';
+  rule: TaskRule | null;
+  color?: TaskColor;
+  due_at?: string | null;
+}
+
+export interface TaskTemplatePatch {
+  base_version: number;
+  title?: string;
+  timezone?: string;
+  completion_mode?: 'manual' | 'record_optional' | 'record_required';
+  rule?: TaskRule | null;
+  color?: TaskColor;
+  due_at?: string | null;
+  effective_from?: string;
+  status?: 'enabled' | 'archived';
+}
+
+export interface TaskTemplateRow {
+  id: string;
+  user_id: string;
+  module_id: string;
+  version: number;
+  phase2: boolean;
+  status: 'enabled' | 'archived';
+  definition: TaskTemplateInput;
+  next_definition: TaskTemplateInput | null;
+  effective_at: string | null;
+  schedule_timezone: string;
+  generation_cursor: string | null;
+  current_instance_id: string | null;
+  created_at: string;
+}
+
+export interface TaskPeriod {
+  key: string;
+  start: string;
+  end: string | null;
+  timezone: string;
+}
+
+export interface TaskProgress {
+  value: string | null;
+  target: string | null;
+  source_record_ids: string[];
+  distinct_dates: string[];
+}
+
+export interface RewardSummary {
+  policy_version: string | null;
+  candidate_amount: string;
+  net_amount: string;
+  eligibility: 'pending' | 'eligible' | 'quota_full' | 'expired' | 'legacy';
+  quota_period: string | null;
+  reversed: boolean;
+}
+
 export interface TaskRow {
   id: string;
   user_id: string;
@@ -97,13 +194,32 @@ export interface TaskRow {
   template_id: string;
   rule_version: number;
   definition: TaskInput;
-  status: 'pending' | 'in_progress' | 'partial' | 'completed' | 'skipped' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'partial' | 'completed' | 'skipped' | 'cancelled' | 'ended';
   needs_review: boolean;
   completed_at: string | null;
   completion_origin: 'manual' | 'evidence' | null;
   version: number;
   created_at: string;
   updated_at: string;
+  // v0.2 Phase 2 instance extensions
+  category?: TaskCategory;
+  color?: TaskColor;
+  template_version?: number;
+  period?: TaskPeriod | null;
+  locked_rule?: TaskRule | null;
+  progress?: TaskProgress | null;
+  reward_summary?: RewardSummary;
+}
+
+export interface TaskInstancesQuery {
+  module_id?: string;
+  category?: TaskCategory;
+  status?: 'pending' | 'in_progress' | 'partial' | 'completed' | 'skipped' | 'cancelled' | 'ended';
+  color?: string;
+  pinned?: 'true' | 'false';
+  period_start?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export interface RecordRow {
@@ -139,10 +255,84 @@ export interface MetricRow {
   user_id: string;
   module_id: string;
   record_type_id: string;
-  definition: MetricInput;
+  definition: MetricInput & { display_precision?: number };
   version: number;
   created_at: string;
   computed: ComputedMetricResult;
+}
+
+// ---------------------------------------------------------------------------
+// v0.2 Phase 2: Metric Trends & View Filtering
+// ---------------------------------------------------------------------------
+
+export type TrendRange = 'last_7_days' | 'month' | 'quarter' | 'year';
+export type TrendGrain = '1d' | '2d' | '3d' | '4d' | '5d' | '6d' | '7d' | '14d' | '21d' | '1mo';
+
+export interface TrendViewFilter {
+  exclude_dates: string[];
+  variance_enabled: boolean;
+  variance_threshold: number;
+  minimum_days: number;
+  include_all: boolean;
+}
+
+export interface TrendPin {
+  metric_id: string;
+  range: TrendRange;
+  grain: TrendGrain;
+  precision: number;
+  view_filter: TrendViewFilter;
+}
+
+export interface TrendDailyValue {
+  date: string;
+  value: string | null;
+  display_value: string | null;
+  source_record_ids: string[];
+  excluded: boolean;
+  marked_for_exclusion?: boolean;
+  exclusion_reasons: Array<'manual' | 'variance'>;
+}
+
+export interface TrendBucketValue {
+  start_date: string;
+  end_date: string;
+  value: string | null;
+  display_value: string | null;
+  valid_days: number;
+  expected_days: number;
+  incomplete: boolean;
+  source_record_ids: string[];
+  excluded_dates: string[];
+}
+
+export interface MetricTrendData {
+  metric_id: string;
+  metric_version: number;
+  range: TrendRange;
+  grain: TrendGrain;
+  precision: number;
+  timezone: string;
+  start_date: string;
+  end_date: string;
+  aggregation: 'count' | 'sum' | 'avg' | 'latest' | string;
+  unit: string;
+  daily_values: TrendDailyValue[];
+  buckets: TrendBucketValue[];
+  coverage: {
+    valid_days: number;
+    expected_days: number;
+    included_days: number;
+  };
+  exclusions: {
+    manual_dates: string[];
+    automatic_dates: string[];
+    applied_dates: string[];
+    fallback_reason: null | 'insufficient_samples' | 'zero_variance' | 'too_few_remaining';
+  };
+  source_refs?: Array<{ record_id: string; version: number | null }>;
+  view_filter: TrendViewFilter;
+  calculation_version: number;
 }
 
 export interface AchievementDefinitionRow {
@@ -169,6 +359,126 @@ export interface AchievementAwardRow {
   version: number;
 }
 
+// ---------------------------------------------------------------------------
+// v0.2 Phase 2: Achievement Series & Multi-Milestones
+// ---------------------------------------------------------------------------
+
+export interface AchievementSeriesMilestoneInput {
+  id: string;
+  threshold: string;
+  label?: string;
+}
+
+export interface AchievementSeriesInput {
+  id: string;
+  module_id: string;
+  name: string;
+  record_type_id: string;
+  aggregation: 'count' | 'distinct_days' | 'sum';
+  field_key: string | null;
+  unit: string;
+  timezone: string;
+  filters?: TaskRuleFilter[];
+  history_policy?: 'include_existing' | 'from_activation';
+  milestones: AchievementSeriesMilestoneInput[];
+}
+
+export interface SeriesMilestoneAwardRow {
+  id: string;
+  user_id?: string;
+  series_id?: string;
+  milestone_id?: string;
+  version: number;
+  state: 'unlocked' | 'needs_review';
+  evidence: {
+    value: string | null;
+    source_record_ids: string[];
+    distinct_dates?: string[];
+    threshold?: string;
+    evaluated_at?: string;
+    calculation_version?: number;
+  };
+  original_evidence: {
+    value: string | null;
+    source_record_ids: string[];
+    distinct_dates?: string[];
+    threshold?: string;
+    evaluated_at?: string;
+    calculation_version?: number;
+  };
+  unlocked_at: string;
+  evaluated_at: string;
+}
+
+export interface SeriesMilestoneView {
+  id: string;
+  series_id?: string;
+  threshold: string;
+  label: string;
+  award: SeriesMilestoneAwardRow | null;
+}
+
+export interface AchievementSeriesView {
+  id: string;
+  user_id: string;
+  module_id: string;
+  record_type_id: string;
+  definition: AchievementSeriesInput;
+  version: number;
+  created_at: string;
+  progress: {
+    value: string;
+    source_record_ids: string[];
+    distinct_dates: string[];
+  };
+  milestones: SeriesMilestoneView[];
+}
+
+export interface AchievementSummaryData {
+  effective_awards_count: number;
+  achieved_series_count: number;
+  needs_review_count: number;
+  legacy_effective_awards_count: number;
+}
+
+// ---------------------------------------------------------------------------
+// v0.2 Phase 2: Read-Only Token Wallet & Append-Only Ledger
+// ---------------------------------------------------------------------------
+
+export interface WalletData {
+  id: string;
+  version: number;
+  balance: string;
+  effective_earned: string;
+  currency: 'token';
+  policy_version: string;
+  quota_timezone: string;
+}
+
+export interface WalletLedgerEntry {
+  id: string;
+  user_id: string;
+  task_id: string;
+  qualification_id: string;
+  ordinal: number;
+  kind: 'grant' | 'reversal' | 'reinstatement';
+  amount: string;
+  policy_version: string;
+  root_entry_id: string;
+  previous_entry_id: string | null;
+  reason: string;
+  created_at: string;
+}
+
+export interface WalletLedgerPage {
+  data: WalletLedgerEntry[];
+  page: {
+    total: number;
+    limit: number;
+    offset: number;
+  };
+}
+
 export interface BootstrapData {
   modules: ModuleRow[];
   record_types: RecordTypeRow[];
@@ -182,7 +492,7 @@ export interface BootstrapData {
 }
 
 // ---------------------------------------------------------------------------
-// v0.2 Phase 1: Profile, Home Preferences & Home Composite Contracts
+// v0.2 Phase 1 & Phase 2: Profile / Observation / Derived, Home & Preferences
 // ---------------------------------------------------------------------------
 
 export type ProfileFieldType =
@@ -194,16 +504,36 @@ export type ProfileFieldType =
   | 'boolean'
   | 'single_select';
 
+export interface ProfileFieldBinding {
+  record_type_id?: string;
+  field_key?: string;
+  metric_id?: string;
+}
+
+export interface ProfileFieldSourceRef {
+  record_id?: string;
+  version?: number;
+  occurred_at?: string;
+  record_type_id?: string;
+  field_key?: string;
+  metric_id?: string;
+  source_record_ids?: string[];
+  evaluated_at?: string;
+}
+
 export interface ProfileFieldRow {
   id: string;
   module_id: string;
   key: string;
   label: string;
   type: ProfileFieldType;
-  kind: 'profile';
+  kind: 'profile' | 'observation' | 'derived';
   value: string | number | boolean | null;
   unit: string | null;
   options: string[];
+  binding?: ProfileFieldBinding | null;
+  source_ref?: ProfileFieldSourceRef | null;
+  unavailable?: boolean;
 }
 
 export interface ProfileData {
@@ -225,13 +555,44 @@ export interface ProfileInput {
   field_remove_ids?: string[];
 }
 
+export interface ObservationWriteInput {
+  id: string;
+  field_id: string;
+  occurred_at: string;
+  timezone: string;
+  value: number | string | null;
+  source_record_id?: string;
+  source_base_version?: number;
+  context_values?: Record<string, string | number | boolean | null>;
+}
+
+export interface ObservationWriteResult {
+  record: RecordRow;
+  profile: ProfileData;
+  impact?: {
+    cursor: number;
+    changes: Array<{
+      seq?: number;
+      entity_type: string;
+      entity_id: string;
+      version: number;
+    }>;
+  };
+}
+
+export interface TypedTaskPin {
+  kind: 'template' | 'instance';
+  id: string;
+}
+
 export interface HomePreferencesData {
   id: string;
   version: number;
   minimal_mode: boolean;
   pinned_metric_ids: string[];
   pinned_task_ids: string[];
-  pinned_trends: unknown[];
+  task_pins?: TypedTaskPin[];
+  pinned_trends: TrendPin[];
 }
 
 export interface HomePreferencesInput {
@@ -239,6 +600,8 @@ export interface HomePreferencesInput {
   minimal_mode?: boolean;
   pinned_metric_ids?: string[];
   pinned_task_ids?: string[];
+  task_pins?: TypedTaskPin[];
+  pinned_trends?: TrendPin[];
 }
 
 export interface HomeWarning {
@@ -248,8 +611,17 @@ export interface HomeWarning {
 }
 
 export interface HomeAchievementRow extends AchievementAwardRow {
-  definition: AchievementInput & { repeat_policy?: 'once' | 'per_period' };
+  definition: (AchievementInput & { repeat_policy?: 'once' | 'per_period' }) | AchievementSeriesInput;
   module_id: string;
+  series_id?: string;
+  milestone_id?: string;
+  threshold?: string;
+  label?: string;
+}
+
+export interface HomeTrendEntry {
+  pin: TrendPin;
+  result: MetricTrendData;
 }
 
 export interface HomeData {
@@ -260,11 +632,28 @@ export interface HomeData {
   tasks: TaskRow[];
   recent_achievements: HomeAchievementRow[];
   warnings?: HomeWarning[];
-  wallet: null;
+  trends?: HomeTrendEntry[];
+  achievement_summary?: AchievementSummaryData;
+  wallet: WalletData | null;
   avatar: {
     enabled: boolean;
     model_asset_ref: string | null;
   };
+}
+
+export type AiActionPanelScope = 'home' | 'tasks' | 'metrics' | 'achievements' | 'records' | 'profile';
+
+export interface AiContextEnvelope {
+  panel: AiActionPanelScope;
+  module_ids: string[];
+  record_type_ids: string[];
+  metric_ids: string[];
+  task_template_ids: string[];
+  task_instance_ids: string[];
+  series_ids: string[];
+  profile_field_ids: string[];
+  source_record_ids: string[];
+  timezone: string;
 }
 
 export interface ApiErrorShape {
@@ -296,7 +685,7 @@ export interface ReturnContext {
 }
 
 // ---------------------------------------------------------------------------
-// S1 Record & v0.2 Phase 1 Configuration Reliability
+// S1 Record & v0.2 Phase 1/2 Configuration Reliability
 // ---------------------------------------------------------------------------
 
 export interface PersistedRecordDraft {
@@ -345,8 +734,14 @@ export type ConfigMutationKind =
   | 'create-module'
   | 'create-template'
   | 'create-task'
+  | 'create-task-template'
+  | 'edit-task-template'
   | 'create-metric'
   | 'create-achievement'
+  | 'create-achievement-series'
+  | 'write-observation'
+  | 'revoke-task'
+  | 'cancel-task'
   | 'profile'
   | 'home-preferences';
 
@@ -423,6 +818,7 @@ export interface PersistedAiDrafts {
 }
 
 export interface PersistedUiPreferences {
+  taskFilter?:{category: "all"|TaskCategory;status:string;color:string;pinnedOnly:boolean};
   theme: 'dark' | 'light';
   reducedMotion: boolean;
   unlockToastEnabled: boolean;

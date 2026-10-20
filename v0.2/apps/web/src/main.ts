@@ -1,10 +1,12 @@
+import {submitPhase2Command} from './phase2-submit.js';
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 import {
   createStaticAvatarRenderer,
   DASHBOARD_STYLES,
   escapeHtml,
-  renderIcon
+  renderIcon,
+  TREND_RANGE_META
 } from '../../../packages/ui/src/index.js';
 import { api, ApiClientError, generateUuid, isUnknownNetworkError } from './api.js';
 import {
@@ -42,6 +44,7 @@ import {
   createInitialProfileFormState,
   createInitialRecordFormState,
   createInitialState,
+  createInitialTrendControlState,
   parseRouteFromLocation,
   routeToPanelKey,
   syncProfileFormFromServer,
@@ -76,6 +79,8 @@ import {
   saveUiPreferences
 } from './storage.js';
 import type {
+  AchievementSeriesInput,
+  AchievementSeriesMilestoneInput,
   AiApplyMode,
   AiBatchRow,
   AiContentType,
@@ -86,11 +91,23 @@ import type {
   ConfigMutationKind,
   Field,
   HomePreferencesInput,
+  ObservationWriteInput,
   PanelKey,
   PanelRoute,
   ProfileData,
+  ProfileFieldRow,
   ProfileInput,
-  RecordInput
+  RecordInput,
+  TaskCategory,
+  TaskColor,
+  TaskRule,
+  TaskRow,
+  TaskTemplateInput,
+  TaskTemplatePatch,
+  TrendGrain,
+  TrendPin,
+  TrendRange,
+  TypedTaskPin
 } from './types.js';
 
 const state: AppState = createInitialState();
@@ -103,6 +120,7 @@ function persistUiState(): void {
     unlockToastEnabled: state.unlockToastEnabled,
     showInactiveModulesInFilter: state.showInactiveModulesInFilter,
     panels: state.panels,
+    taskFilter:state.taskFilter,
     returnContext: state.returnContext
   });
 }
@@ -118,6 +136,7 @@ function hydrateUiStateFromStorage(): void {
   if (typeof saved.showInactiveModulesInFilter === 'boolean') {
     state.showInactiveModulesInFilter = saved.showInactiveModulesInFilter;
   }
+  if(saved.taskFilter)state.taskFilter={...state.taskFilter,...saved.taskFilter};
   if (saved.panels) {
     for (const k of ['tasks', 'metrics', 'achievements', 'records', 'settings'] as const) {
       if (saved.panels[k]) {
@@ -496,8 +515,8 @@ function renderShellAndMain(): string {
       label: '成就面板',
       shortLabel: '成就',
       icon: 'trophy',
-      count: data ? data.achievement_awards.filter(a => a.state === 'unlocked').length : undefined,
-      warning: data ? data.achievement_awards.some(a => a.state === 'needs_review') : false
+      count: state.achievementSummary?.effective_awards_count ?? (data ? data.achievement_awards.filter(a => a.state === 'unlocked').length : undefined),
+      warning: Boolean(state.achievementSummary?.needs_review_count || (data ? data.achievement_awards.some(a => a.state === 'needs_review') : false))
     },
     {
       route: '/records',
@@ -582,7 +601,8 @@ function renderShellAndMain(): string {
     </header>
 
     <div id="ld-main-region" style="flex:1;min-width:0;display:flex;flex-direction:column;">
-      ${mainContentHtml}
+      ${state.phase2LoadError?`<div class="ld-error-banner" role="alert">${escapeHtml(state.phase2LoadError)}<button class="ld-btn" data-action="retry-phase2">重试</button></div>`:''}
+    ${mainContentHtml}
     </div>
 
     <nav class="ld-mobile-dock" aria-label="移动端五面板导航">
@@ -637,6 +657,12 @@ async function syncHomeAndProfileQuietly(): Promise<void> {
     state.home = home;
     state.profile = home.profile;
     state.homePreferences = home.preferences;
+    if (home.wallet) {
+      state.wallet = home.wallet;
+    }
+    if (home.achievement_summary) {
+      state.achievementSummary = home.achievement_summary;
+    }
     if (state.user) {
       state.user.name = home.profile.nickname;
       state.user.timezone = home.profile.timezone;
@@ -655,6 +681,55 @@ async function syncHomeAndProfileQuietly(): Promise<void> {
   }
 }
 
+const trendRequests=new Map<string,number>();
+async function syncMetricTrendQuietly(metricId: string): Promise<void> {
+  if (!metricId) return;
+  if (!state.metricTrendControls[metricId]) {
+    state.metricTrendControls[metricId] = createInitialTrendControlState();
+  }
+  const ctrl = {...state.metricTrendControls[metricId],excludeDates:[...state.metricTrendControls[metricId].excludeDates]};
+  const request=(trendRequests.get(metricId)??0)+1;trendRequests.set(metricId,request);
+  try {
+    const trend = await api.getMetricTrend(metricId, {
+      range: ctrl.range,
+      grain: ctrl.grain,
+      precision: ctrl.precision,
+      exclude_dates: ctrl.excludeDates,
+      variance_enabled: ctrl.varianceEnabled,
+      variance_threshold: ctrl.varianceThreshold,
+      minimum_days: ctrl.minimumDays,
+      include_all: ctrl.includeAll
+    });
+    if(trendRequests.get(metricId)===request){state.metricTrends[metricId]=trend;delete (state.metricTrendErrors??={})[metricId];}
+  } catch (err) {
+    if(trendRequests.get(metricId)===request){delete state.metricTrends[metricId];(state.metricTrendErrors??={})[metricId]=err instanceof Error?err.message:'趋势读取失败';}
+  }
+}
+
+async function syncPhase2DomainQuietly(): Promise<void> {
+  const allPages=async<T>(get:(offset:number)=>Promise<{data:T[];page:{total:number}}>)=>{const data:T[]=[];let total=0;do{const page=await get(data.length);total=page.page.total;data.push(...page.data);if(!page.data.length)break;}while(data.length<total);return {data,page:{total}};};
+  const [tplRes, instRes, seriesRes, summaryRes, walletRes, ledgerRes] = await Promise.allSettled([
+    api.getTaskTemplates(),
+    allPages<TaskRow>(offset=>api.getTaskInstances({limit:100,offset})),
+    allPages<import('./types.js').AchievementSeriesView>(offset=>api.getAchievementSeries({limit:100,offset})),
+    api.getAchievementSummary(),
+    api.getWallet(),
+    api.getWalletLedger({ limit: 50, offset: state.walletLedgerOffset??0, task_id:state.walletLedgerTaskFilter??undefined })
+  ]);
+  if (tplRes.status === 'fulfilled') state.taskTemplates = tplRes.value;
+  if (instRes.status === 'fulfilled') state.taskInstances = instRes.value.data;
+  if (seriesRes.status === 'fulfilled') state.achievementSeries = seriesRes.value.data;
+  if (summaryRes.status === 'fulfilled') state.achievementSummary = summaryRes.value;
+  if (walletRes.status === 'fulfilled') state.wallet = walletRes.value;
+  if (ledgerRes.status === 'fulfilled') {
+    state.walletLedger = ledgerRes.value.data;
+    state.walletLedgerTotal = ledgerRes.value.page.total;
+  }
+  const metrics = state.bootstrap?.metrics ?? [];
+  state.phase2LoadError=[tplRes,instRes,seriesRes,summaryRes,walletRes,ledgerRes].some(r=>r.status==='rejected')?'部分数据读取失败，请刷新重试；未将失败当作空数据。':null;
+  await Promise.allSettled(metrics.map(m => syncMetricTrendQuietly(m.id)));
+}
+
 async function refreshBootstrapAndNotify(
   actionSummary?: string,
   checkUnlocks = false,
@@ -667,7 +742,10 @@ async function refreshBootstrapAndNotify(
   );
   const fresh = await api.getBootstrap();
   state.bootstrap = fresh;
-  await syncHomeAndProfileQuietly().catch(() => {});
+  await Promise.allSettled([
+    syncHomeAndProfileQuietly(),
+    syncPhase2DomainQuietly()
+  ]);
   state.error = null;
 
   renderApp({ preserveModalInput });
@@ -927,7 +1005,10 @@ async function initializeApp(): Promise<void> {
     const me = await api.getMe();
     state.user = me;
     state.bootstrap = await api.getBootstrap();
-    await syncHomeAndProfileQuietly().catch(() => {});
+    await Promise.allSettled([
+      syncHomeAndProfileQuietly(),
+      syncPhase2DomainQuietly()
+    ]);
     const savedProfileDraft = loadProfileDraft();
     if (savedProfileDraft) {
       state.profileForm = {
@@ -962,13 +1043,31 @@ async function initializeApp(): Promise<void> {
   }
 }
 
-function buildProfilePayload(pf:AppState['profileForm']):ProfileInput {
+function buildProfilePayload(pf: AppState['profileForm']): ProfileInput {
   return {
-        base_version: pf.baseVersion,
-        nickname: pf.nickname.trim(),
-        bio: pf.bioIsNull ? null : pf.bio,
-        timezone: pf.timezone.trim(),
-        field_upserts: pf.fields.filter(f=>state.bootstrap?.modules.some(m=>m.id===f.module_id && m.status==='enabled')).map(f => ({
+    base_version: pf.baseVersion,
+    nickname: pf.nickname.trim(),
+    bio: pf.bioIsNull ? null : pf.bio,
+    timezone: pf.timezone.trim(),
+    field_upserts: pf.fields
+      .filter(f => state.bootstrap?.modules.some(m => m.id === f.module_id && m.status === 'enabled'))
+      .map(f => {
+        const kind: ProfileFieldRow['kind'] = f.kind ?? 'profile';
+        if (kind === 'observation' || kind === 'derived') {
+          return {
+            id: f.id,
+            module_id: f.module_id,
+            key: f.key,
+            label: f.label,
+            type: f.type,
+            kind,
+            value: null,
+            unit: f.unit,
+            options: f.options ?? [],
+            binding: f.binding ?? null
+          };
+        }
+        return {
           id: f.id,
           module_id: f.module_id,
           key: f.key,
@@ -978,9 +1077,10 @@ function buildProfilePayload(pf:AppState['profileForm']):ProfileInput {
           value: f.value,
           unit: f.unit,
           options: f.options ?? []
-        })),
-        field_remove_ids: pf.removeIds
-      };
+        };
+      }),
+    field_remove_ids: pf.removeIds
+  };
 }
 
 async function updateHomePreferencesReliably(
@@ -1064,6 +1164,7 @@ function setupEventDelegation(): void {
     renderApp();
   });
 
+  document.addEventListener('keydown',e=>{const t=(e.target as Element)?.closest<HTMLElement>('.ld-trend-point');if(t&&(e.key==='Enter'||e.key===' ')){e.preventDefault();t.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
   document.addEventListener('change', e => {
     const target = e.target as HTMLElement | null;
     if (!target) return;
@@ -1078,6 +1179,28 @@ function setupEventDelegation(): void {
       state.panels.records.recordStatus = val;
       persistUiState();
       renderApp();
+    } else if (action === 'task-filter-change') {
+      const key = target.getAttribute('data-filter-key');
+      if (key === 'category') {
+        state.taskFilter.category = (target as HTMLSelectElement).value as AppState['taskFilter']['category'];
+      } else if(key==='moduleId'){state.panels.tasks.moduleId=(target as HTMLSelectElement).value==='all'?null:(target as HTMLSelectElement).value;
+      } else if (key === 'status') {
+        state.taskFilter.status = (target as HTMLSelectElement).value;
+      } else if (key === 'color') {
+        state.taskFilter.color = (target as HTMLSelectElement).value;
+      } else if (key === 'pinnedOnly') {
+        state.taskFilter.pinnedOnly = (target as HTMLInputElement).checked;
+      }
+      persistUiState();renderApp();
+    } else if(action==='trend-set-precision'){const id=target.getAttribute('data-metric-id')!;const ctrl=state.metricTrendControls[id]??=createInitialTrendControlState();ctrl.precision=Number((target as HTMLSelectElement).value);void syncMetricTrendQuietly(id).then(()=>renderApp({preserveModalInput:true}));
+    } else if (action === 'trend-set-variance-pct') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      if (!metricId) return;
+      if (!state.metricTrendControls[metricId]) {
+        state.metricTrendControls[metricId] = createInitialTrendControlState();
+      }
+      state.metricTrendControls[metricId].varianceThreshold = Number((target as HTMLSelectElement).value) || 0.5;
+      void syncMetricTrendQuietly(metricId).then(() => renderApp({ preserveModalInput: true }));
     }
   });
 
@@ -1176,7 +1299,8 @@ function setupEventDelegation(): void {
       await updateHomePreferencesReliably(
         {
           pinned_metric_ids: validMetricIds,
-          pinned_task_ids: validTaskIds
+          task_pins:(state.homePreferences?.task_pins??validTaskIds.map(id=>({kind:'instance' as const,id}))).filter(p=>!(home.warnings??[]).some(w=>w.kind==='task'&&w.id===p.id)),
+          pinned_trends:(state.homePreferences?.pinned_trends??[]).filter(p=>!(home.warnings??[]).some(w=>w.kind==='metric'&&w.id===p.metric_id))
         },
         '已清理失效的首页固定引用'
       );
@@ -1213,14 +1337,12 @@ function setupEventDelegation(): void {
     if (action === 'home-toggle-pin-task') {
       const taskId = target.getAttribute('data-task-id') ?? '';
       if (!taskId) return;
-      const current = [...(state.homePreferences?.pinned_task_ids ?? [])];
-      const next = current.includes(taskId)
-        ? current.filter(id => id !== taskId)
-        : [...current, taskId];
-      await updateHomePreferencesReliably(
-        { pinned_task_ids: next },
-        current.includes(taskId) ? '已取消固定该任务卡片' : '已将该任务卡片固定到首页'
-      );
+      const current=[...(state.homePreferences?.task_pins??state.homePreferences?.pinned_task_ids.map(id=>({kind:'instance' as const,id}))??[])];
+      const t=state.taskInstances.find(t=>t.id===taskId)??data?.tasks.find(t=>t.id===taskId);
+      const template=t&&state.taskTemplates.find(x=>x.id===t.template_id);
+      const existing=current.find(p=>p.kind==='instance'&&p.id===taskId||p.kind==='template'&&p.id===template?.id);
+      const next=existing?current.filter(p=>p!==existing):[...current,{kind:template?'template' as const:'instance' as const,id:template?.id??taskId}];
+      await updateHomePreferencesReliably({task_pins:next},existing?'已取消固定任务':'已固定任务');
       return;
     }
 
@@ -1384,6 +1506,12 @@ function setupEventDelegation(): void {
           defaultModuleId: state.panels.tasks.moduleId
         });
         renderApp();
+      } else if (kind === 'create-task-template') {
+        prepareConfigFormModal('create-task-template', {
+          kind: 'create-task-template',
+          defaultModuleId: state.panels.tasks.moduleId
+        });
+        renderApp();
       } else if (kind === 'create-metric') {
         prepareConfigFormModal('create-metric', {
           kind: 'create-metric',
@@ -1396,6 +1524,12 @@ function setupEventDelegation(): void {
           defaultModuleId: state.panels.achievements.moduleId
         });
         renderApp();
+      } else if (kind === 'create-achievement-series') {
+        prepareConfigFormModal('create-achievement-series', {
+          kind: 'create-achievement-series',
+          defaultModuleId: state.panels.achievements.moduleId
+        });
+        renderApp();
       }
       return;
     }
@@ -1404,22 +1538,34 @@ function setupEventDelegation(): void {
       const form = document.getElementById('ld-form-profile') as HTMLFormElement | null;
       if (form) extractProfileFormToState(form, state);
       const selectEl = document.getElementById('ld-profile-add-module-select') as HTMLSelectElement | null;
+      const kindEl = document.getElementById('ld-profile-add-kind-select') as HTMLSelectElement | null;
       const modId =
         selectEl?.value ||
         data.modules.find(m => m.status === 'enabled')?.id ||
         '';
       if (!modId) return;
+      const kind = ((kindEl?.value || 'profile') as ProfileFieldRow['kind']);
       const nextIdx = state.profileForm.fields.length + 1;
+      const firstRt = data.record_types.find(rt => rt.module_id === modId) ?? data.record_types[0];
+      const firstNumeric=firstRt?.fields.find(f=>['integer','decimal'].includes(f.type));
+      const firstRtField=firstNumeric?.key??'';
+      const firstMetric = data.metrics.find(m => m.module_id === modId) ?? data.metrics[0];
       state.profileForm.fields.push({
         id: generateUuid(),
         module_id: modId,
         key: `field_${nextIdx}`,
         label: `自定义字段 ${nextIdx}`,
-        type: 'text',
-        kind: 'profile',
-        value: '',
-        unit: null,
-        options: []
+        type:kind==='derived'?'decimal':kind==='observation'?(firstNumeric?.type as 'integer'|'decimal'??'decimal'):'text',
+        kind,
+        value: kind === 'profile' ? '' : null,
+        unit:kind==='observation'?firstNumeric?.unit??null:kind==='derived'?firstMetric?.definition.unit??null:null,
+        options: [],
+        binding:
+          kind === 'observation'
+            ? { record_type_id: firstRt?.id ?? '', field_key: firstRtField }
+            : kind === 'derived'
+              ? { metric_id: firstMetric?.id ?? '' }
+              : null
       });
       state.profileForm.dirty = true;
       state.profileForm.submissionStatus = 'saved_local';
@@ -1615,6 +1761,7 @@ function setupEventDelegation(): void {
       state.panels.metrics.selectedId = metricId;
       navigateTo('/metrics', { preserveReturnContext: true });
       state.activeModal = { kind: 'metric-detail', metricId };
+      void syncMetricTrendQuietly(metricId).then(()=>renderApp({preserveModalInput:true}));
       renderApp();
       return;
     }
@@ -1664,6 +1811,7 @@ function setupEventDelegation(): void {
       return;
     }
 
+    if ((action==='home-achievement-evidence'||action==='home-achievement-detail')&&target.getAttribute('data-series-id')){const id=target.getAttribute('data-series-id')!;state.activeModal={kind:'series-detail',seriesId:id};renderApp();return;}
     if (action === 'home-achievement-evidence') {
       const achievementId = target.getAttribute('data-achievement-id') ?? '';
       const award =
@@ -1831,7 +1979,7 @@ function setupEventDelegation(): void {
       const task = data.tasks.find(t => t.id === taskId);
       if (!task || task.status === 'cancelled' || task.status === 'skipped') return;
       try {
-        await api.completeTask(task.id, task.version);
+        await submitPhase2Command('create-task',`phase2:complete:${task.id}`,task.id,{base_version:task.version},(p,key)=>api.completeTask(task.id,p.base_version,key));
         await refreshBootstrapAndNotify(`已将任务「${task.definition.title}」标记为完成`);
       } catch (err) {
         handleApiError(err);
@@ -1953,6 +2101,7 @@ function setupEventDelegation(): void {
       state.panels.metrics.selectedId = metricId;
       state.modalError = null;
       state.activeModal = { kind: 'metric-detail', metricId };
+      void syncMetricTrendQuietly(metricId).then(()=>renderApp({preserveModalInput:true}));
       renderApp();
       return;
     }
@@ -2049,6 +2198,7 @@ function setupEventDelegation(): void {
       state.panels.metrics.selectedId = metricId;
       navigateTo('/metrics', { preserveReturnContext: true });
       state.activeModal = { kind: 'metric-detail', metricId };
+      void syncMetricTrendQuietly(metricId).then(()=>renderApp({preserveModalInput:true}));
       renderApp();
       return;
     }
@@ -2099,6 +2249,348 @@ function setupEventDelegation(): void {
       renderApp();
       return;
     }
+
+    if (action === 'tasks-filter-reset') {
+      state.taskFilter = {
+        category: 'all',
+        status: 'all',
+        color: 'all',
+        pinnedOnly: false
+      };
+      state.panels.tasks.moduleId=null;persistUiState();renderApp();
+      return;
+    }
+
+    if (action === 'task-materialize-current') {
+      try {
+        await submitPhase2Command('create-task-template','phase2:materialize','materialize',{},(_p,key)=>api.materializeTaskInstances(undefined,key));
+        await refreshBootstrapAndNotify('已确保并刷新当前周期任务实例');
+      } catch (err) {
+        handleApiError(err);
+      }
+      return;
+    }
+
+    if (action === 'open-create-task-template') {
+      prepareConfigFormModal('create-task-template', {
+        kind: 'create-task-template',
+        defaultModuleId: state.panels.tasks.moduleId
+      });
+      renderApp();
+      return;
+    }
+
+    if (action === 'open-edit-task-template') {
+      const templateId = target.getAttribute('data-template-id') ?? '';
+      if (!templateId) return;
+      state.modalError = null;
+      state.activeModal = { kind: 'edit-task-template', templateId };
+      renderApp();
+      return;
+    }
+
+    if (action === 'open-revoke-task') {
+      const taskId = target.getAttribute('data-task-id') ?? '';
+      if (!taskId) return;
+      state.modalError = null;
+      state.activeModal = { kind: 'revoke-task', taskId, mode: 'revoke' };
+      renderApp();
+      return;
+    }
+
+    if (action === 'open-cancel-task') {
+      const taskId = target.getAttribute('data-task-id') ?? '';
+      if (!taskId) return;
+      state.modalError = null;
+      state.activeModal = { kind: 'revoke-task', taskId, mode: 'cancel' };
+      renderApp();
+      return;
+    }
+
+    if (action === 'task-toggle-typed-pin') {
+      const pinKind = (target.getAttribute('data-pin-kind') ?? 'instance') as 'template' | 'instance';
+      const pinId = target.getAttribute('data-pin-id') ?? '';
+      if (!pinId) return;
+      const current = [...(state.homePreferences?.task_pins ?? [])];
+      const exists = current.some(p => p.kind === pinKind && p.id === pinId);
+      const next = exists ? current.filter(p => !(p.kind === pinKind && p.id === pinId)) : [...current, {kind:pinKind,id:pinId}];
+      if(next.length>5){pushToast('固定数量已满','最多固定5项任务，请先取消其他固定','warning');return;}
+      await updateHomePreferencesReliably({task_pins:next},exists?'已取消首页固定':'已固定到首页');
+      return;
+    }
+
+    if (action === 'trend-set-range') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      const nextRange = (target.getAttribute('data-range') ?? 'last_7_days') as TrendRange;
+      if (!metricId) return;
+      if (!state.metricTrendControls[metricId]) {
+        state.metricTrendControls[metricId] = createInitialTrendControlState();
+      }
+      const ctrl = state.metricTrendControls[metricId];
+      ctrl.range = nextRange;
+      const allowed = TREND_RANGE_META[nextRange]?.grains ?? ['1d'];
+      if (!allowed.includes(ctrl.grain)) {
+        ctrl.grain = TREND_RANGE_META[nextRange]?.defaultGrain ?? allowed[0] ?? '1d';
+      }
+      ctrl.selectedPointKey = null;
+      await syncMetricTrendQuietly(metricId);
+      renderApp({ preserveModalInput: true });
+      return;
+    }
+
+    if (action === 'trend-set-grain') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      const nextGrain = (target.getAttribute('data-grain') ?? '1d') as TrendGrain;
+      if (!metricId) return;
+      if (!state.metricTrendControls[metricId]) {
+        state.metricTrendControls[metricId] = createInitialTrendControlState();
+      }
+      const ctrl = state.metricTrendControls[metricId];
+      ctrl.grain = nextGrain;
+      ctrl.selectedPointKey = null;
+      await syncMetricTrendQuietly(metricId);
+      renderApp({ preserveModalInput: true });
+      return;
+    }
+
+    if (action === 'trend-toggle-variance') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      if (!metricId) return;
+      if (!state.metricTrendControls[metricId]) {
+        state.metricTrendControls[metricId] = createInitialTrendControlState();
+      }
+      const ctrl = state.metricTrendControls[metricId];
+      ctrl.varianceEnabled = !ctrl.varianceEnabled;
+      if (ctrl.varianceEnabled) {
+        ctrl.includeAll = false;
+      }
+      await syncMetricTrendQuietly(metricId);
+      renderApp({ preserveModalInput: true });
+      return;
+    }
+
+    if (action === 'trend-toggle-include-all') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      if (!metricId) return;
+      if (!state.metricTrendControls[metricId]) {
+        state.metricTrendControls[metricId] = createInitialTrendControlState();
+      }
+      const ctrl = state.metricTrendControls[metricId];
+      ctrl.includeAll = !ctrl.includeAll;
+      await syncMetricTrendQuietly(metricId);
+      renderApp({ preserveModalInput: true });
+      return;
+    }
+
+    if (action === 'trend-toggle-exclude-date') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      const dateStr = target.getAttribute('data-date') ?? '';
+      if (!metricId || !dateStr) return;
+      if (!state.metricTrendControls[metricId]) {
+        state.metricTrendControls[metricId] = createInitialTrendControlState();
+      }
+      const ctrl = state.metricTrendControls[metricId];
+      if (ctrl.excludeDates.includes(dateStr)) {
+        ctrl.excludeDates = ctrl.excludeDates.filter(d => d !== dateStr);
+      } else {
+        ctrl.excludeDates = [...ctrl.excludeDates, dateStr];
+        ctrl.includeAll = false;
+      }
+      await syncMetricTrendQuietly(metricId);
+      renderApp({ preserveModalInput: true });
+      return;
+    }
+
+    if (action === 'trend-select-point') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      const bucketKey = target.getAttribute('data-point-key') ?? '';
+      if (!metricId || !bucketKey) return;
+      if (!state.metricTrendControls[metricId]) {
+        state.metricTrendControls[metricId] = createInitialTrendControlState();
+      }
+      state.metricTrendControls[metricId].selectedPointKey = bucketKey;
+      renderApp({ preserveModalInput: true });
+      return;
+    }
+
+    if (action === 'trend-bucket-sources') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      const bucketKey = target.getAttribute('data-point-key') ?? '';
+      const m = data.metrics.find(x => x.id === metricId);
+      const trend = state.metricTrends[metricId];
+      const bucket = trend?.buckets.find(b => `${b.start_date}..${b.end_date}` === (bucketKey||state.metricTrendControls[metricId]?.selectedPointKey)) ?? trend?.buckets.at(-1);
+      if (!m || !bucket) return;
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: state.route,
+        fromPanelKey: routeToPanelKey(state.route) ?? 'home',
+        savedFilter: { ...state.panels.metrics },
+        label: `来自数值趋势「${m.definition.name} · ${bucket.start_date} ~ ${bucket.end_date}」的来源记录`
+      };
+      state.panels.records.moduleId = m.module_id;
+      state.panels.records.recordTemplateId = m.record_type_id;
+      state.panels.records.sourceRecordIds = [...bucket.source_record_ids];
+      state.panels.records.sourceLabel = `数值趋势「${m.definition.name} · ${bucket.start_date} ~ ${bucket.end_date}」的 ${bucket.source_record_ids.length} 条来源记录`;
+      state.activeModal = null;
+      navigateTo('/records', { preserveReturnContext: true });
+      return;
+    }
+
+    if (action === 'trend-toggle-pin') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      if (!metricId) return;
+      const ctrl=state.metricTrendControls[metricId]??createInitialTrendControlState();
+      const current=[...(state.homePreferences?.pinned_trends??[])];
+      const exists=current.some(p=>p.metric_id===metricId);
+      if(!exists&&current.length>=2){pushToast('固定数量已满','最多固定两张趋势，请先取消其他趋势','warning');return;}
+      const next=exists?current.filter(p=>p.metric_id!==metricId):[...current,{metric_id:metricId,range:ctrl.range,grain:ctrl.grain,precision:ctrl.precision,view_filter:{exclude_dates:[...ctrl.excludeDates],variance_enabled:ctrl.varianceEnabled,variance_threshold:ctrl.varianceThreshold,minimum_days:ctrl.minimumDays,include_all:ctrl.includeAll}}];
+      await updateHomePreferencesReliably({pinned_trends:next},exists?'已取消固定趋势':'已固定当前范围、粒度和筛选');
+      return;
+    }
+
+    if (action === 'open-create-achievement-series') {
+      prepareConfigFormModal('create-achievement-series', {
+        kind: 'create-achievement-series',
+        defaultModuleId: state.panels.achievements.moduleId
+      });
+      renderApp();
+      return;
+    }
+
+    if (action === 'open-series-detail') {
+      const seriesId = target.getAttribute('data-series-id') ?? '';
+      if (!seriesId) return;
+      state.modalError = null;
+      state.activeModal = { kind: 'series-detail', seriesId };
+      renderApp();
+      return;
+    }
+
+    if (action === 'series-view-sources') {
+      const seriesId = target.getAttribute('data-series-id') ?? '';
+      const milestoneId = target.getAttribute('data-milestone-id') ?? '';
+      const s = state.achievementSeries.find(x => x.id === seriesId);
+      const ms = s?.milestones.find(x => x.id === milestoneId);
+      const award = ms?.award;
+      if (!s) return;
+      const ids =
+        award ? (award.evidence.source_record_ids.length ? award.evidence.source_record_ids : award.original_evidence.source_record_ids) : s.progress.source_record_ids;
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: state.route,
+        fromPanelKey: routeToPanelKey(state.route) ?? 'home',
+        savedFilter: { ...state.panels.achievements },
+        label: `来自成就系列「${s.definition.name}${ms ? " · "+ms.label : ""}」的证据记录`
+      };
+      state.panels.records.moduleId = s.module_id;
+      state.panels.records.sourceRecordIds = [...ids];
+      state.panels.records.sourceLabel = `成就系列「${s.definition.name}${ms ? " · "+ms.label : ""}」的证据记录 (${ids.length} 条)`;
+      state.activeModal = null;
+      navigateTo('/records', { preserveReturnContext: true });
+      return;
+    }
+
+    if (action === 'open-write-observation') {
+      const fieldId = target.getAttribute('data-field-id') ?? '';
+      const mode = (target.getAttribute('data-obs-mode') ?? 'new') as 'new' | 'correct';
+      if (!fieldId) return;
+      state.observationForm = null;
+      state.modalError = null;
+      state.activeModal = { kind: 'write-observation', fieldId, mode };
+      renderApp();
+      return;
+    }
+
+    if (action === 'profile-jump-source-record') {
+      const recordId = target.getAttribute('data-record-id') ?? '';
+      if (!recordId) return;
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: '/settings',
+        fromPanelKey: 'settings',
+        savedFilter: { ...state.panels.settings },
+        label: '来自个人资料观测值来源记录查看'
+      };
+      state.panels.records.selectedId = recordId;
+      state.activeModal = { kind: 'record-detail', recordId };
+      navigateTo('/records', { preserveReturnContext: true });
+      return;
+    }
+
+    if (action === 'profile-jump-source-metric') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      if (!metricId) return;
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: '/settings',
+        fromPanelKey: 'settings',
+        savedFilter: { ...state.panels.settings },
+        label: '来自个人资料派生值来源数值查看'
+      };
+      state.panels.metrics.selectedId = metricId;
+      state.activeModal = { kind: 'metric-detail', metricId };
+      void syncMetricTrendQuietly(metricId).then(()=>renderApp({preserveModalInput:true}));
+      navigateTo('/metrics', { preserveReturnContext: true });
+      return;
+    }
+
+    if (action === 'profile-jump-derived-records') {
+      const fieldId = target.getAttribute('data-field-id') ?? '';
+      const srvField = (state.profile?.module_fields ?? []).find(f => f.id === fieldId);
+      const ids = srvField?.source_ref?.source_record_ids ?? [];
+      if (!srvField || ids.length === 0) return;
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: '/settings',
+        fromPanelKey: 'settings',
+        savedFilter: { ...state.panels.settings },
+        label: `来自个人资料派生字段「${srvField.label}」的来源记录`
+      };
+      state.panels.records.moduleId = srvField.module_id;
+      state.panels.records.sourceRecordIds = [...ids];
+      state.panels.records.sourceLabel = `派生字段「${srvField.label}」的 ${ids.length} 条来源记录`;
+      navigateTo('/records', { preserveReturnContext: true });
+      return;
+    }
+
+    if(action==='wallet-page'){state.walletLedgerOffset=Math.max(0,(state.walletLedgerOffset??0)+Number(target.getAttribute('data-delta')??0));await syncPhase2DomainQuietly();renderApp();return;}
+    if(action==='retry-phase2'){await syncPhase2DomainQuietly();renderApp();return;}
+    if(action==='trend-retry'){const id=target.getAttribute('data-metric-id');if(id)await syncMetricTrendQuietly(id);renderApp();return;}
+    if(action==='template-adopt-baseline'){state.taskTemplates=await api.getTaskTemplates();state.modalError=null;renderApp({preserveModalInput:true});return;}
+    if(action==='observation-adopt-baseline'){const obs=state.observationForm;if(!obs)return;const fresh=await api.getBootstrap();const r=fresh.records.find(r=>r.id===obs.sourceRecordId);if(!r){pushToast('来源不可用','来源记录已删除，请关闭后选择新增观测','warning');return;}state.bootstrap=fresh;obs.sourceBaseVersion=r.version;obs.conflictError=null;obs.submissionStatus='saved_local';renderApp();return;}
+    if (action === 'open-wallet-ledger') {
+      const taskIdFilter = target.getAttribute('data-task-id') || null;
+      state.walletLedgerTaskFilter = taskIdFilter;state.walletLedgerOffset=0;await syncPhase2DomainQuietly();
+      state.modalError = null;
+      state.activeModal = { kind: 'wallet-ledger', taskId:taskIdFilter };
+      renderApp();
+      return;
+    }
+
+    if (action === 'wallet-clear-task-filter') {
+      state.walletLedgerTaskFilter = null;state.walletLedgerOffset=0;await syncPhase2DomainQuietly();
+      if (state.activeModal?.kind === 'wallet-ledger') {
+        state.activeModal = { kind: 'wallet-ledger', taskId:null };
+      }
+      renderApp();
+      return;
+    }
+
+    if (action === 'wallet-go-task') {
+      const taskId = target.getAttribute('data-task-id') ?? '';
+      if (!taskId) return;
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: state.route,
+        fromPanelKey: routeToPanelKey(state.route) ?? 'home',
+        savedFilter: { ...state.panels.tasks },
+        label: '来自奖励账本流水的来源任务核查'
+      };
+      state.panels.tasks.selectedId = taskId;
+      state.activeModal = { kind: 'task-detail', taskId };
+      navigateTo('/tasks', { preserveReturnContext: true });
+      return;
+    }
   });
 
   document.addEventListener('submit', async e => {
@@ -2123,7 +2615,10 @@ function setupEventDelegation(): void {
         state.user = me;
         state.capabilities = capabilities;
         state.bootstrap = bootstrap;
-        await syncHomeAndProfileQuietly().catch(() => {});
+        await Promise.allSettled([
+          syncHomeAndProfileQuietly(),
+          syncPhase2DomainQuietly()
+        ]);
         state.authStatus = 'authenticated';
         state.loading = false;
         renderApp();
@@ -2862,6 +3357,172 @@ function setupEventDelegation(): void {
         (payload, opId) => api.createRecordType(payload, opId),
         payload => `已创建记录模板「${payload.name}」`
       );
+      return;
+    }
+
+    if (form.id === 'ld-form-create-task-template') {
+      const fd = new FormData(form);
+      const module_id = String(fd.get('module_id') ?? '');
+      const title = String(fd.get('title') ?? '').trim();
+      const category = String(fd.get('category') ?? 'daily') as TaskCategory;
+      const color=String(fd.get('color')??'blue') as TaskColor;
+      const completion_mode=String(fd.get('completion_mode')??'manual') as 'manual'|'record_optional'|'record_required';
+      const timezone=String(fd.get('timezone')??'Asia/Shanghai');
+      const due_at=category==='main'?(String(fd.get('due_at')??'').trim()||null):null;
+      const record_type_id=String(fd.get('record_type_id')??'');
+      const kind=String(fd.get('rule_kind')??'count');
+      const threshold=String(fd.get('threshold')??'1').trim();
+      const field_key=String(fd.get('field_key')??'');
+      let rule:TaskRule|null=null;
+      if(completion_mode!=='manual'){
+        if(kind==='linked_exists')rule={kind,record_type_id};
+        else if(kind==='linked_field_gte')rule={kind,record_type_id,field_key,threshold};
+        else if(kind==='sum')rule={kind,record_type_id,field_key,threshold,unit:String(fd.get('unit')??''),filters:[]};
+        else rule={kind:kind==='distinct_days'?'distinct_days':'count',record_type_id,threshold,filters:[]};
+      }
+
+      await submitConfigCreationReliably(
+        'create-task-template',
+        entityId =>
+          ({
+            id: entityId,
+            module_id,
+            title,
+            category,
+            color,
+            completion_mode,
+            rule,
+            timezone,
+            due_at
+          }) satisfies TaskTemplateInput,
+        async (payload, opId) => {
+          const created = await api.createTaskTemplate(payload, opId);
+          return { id: created.template.id };
+        },
+        payload => `已创建周期任务模板「${payload.title}」并生成当前周期实例`
+      );
+      return;
+    }
+
+    if (form.id === 'ld-form-edit-task-template') {
+      const templateId = form.getAttribute('data-template-id') ?? '';
+      const baseVersion = Number(form.getAttribute('data-base-version') ?? '1');
+      const fd = new FormData(form);
+      const tpl=state.taskTemplates.find(t=>t.id===templateId);
+      const title=String(fd.get('title')??tpl?.definition.title??'');
+      const patch:TaskTemplatePatch={base_version:baseVersion,status:String(fd.get('status')??'enabled') as 'enabled'|'archived'};
+      if(tpl?.definition.category!=='main'){
+        patch.title=title;patch.color=String(fd.get('color')??'blue') as TaskColor;
+        patch.timezone=String(fd.get('timezone')??tpl?.definition.timezone??'Asia/Shanghai');
+        const mode=String(fd.get('completion_mode')??'manual') as 'manual'|'record_optional'|'record_required';patch.completion_mode=mode;
+        const kind=String(fd.get('rule_kind')??'count'),record_type_id=String(fd.get('record_type_id')??''),threshold=String(fd.get('threshold')??'1'),field_key=String(fd.get('field_key')??'');
+        const oldRule=(tpl?.next_definition??tpl?.definition)?.rule;
+        const filters=oldRule&&'filters' in oldRule?oldRule.filters??[]:[];
+        patch.rule=mode==='manual'?null:kind==='linked_exists'?{kind,record_type_id}:kind==='linked_field_gte'?{kind,record_type_id,field_key,threshold}:kind==='sum'?{kind,record_type_id,field_key,threshold,unit:String(fd.get('unit')??''),filters}:{kind:kind==='distinct_days'?'distinct_days':'count',record_type_id,threshold,filters};
+        const effective=String(fd.get('effective_from')??'').trim();if(effective)patch.effective_from=effective;
+      }
+
+      state.submittingModal = true;
+      renderModalRegionOnly(true);
+      try {
+        await submitPhase2Command('edit-task-template',`phase2:template:${templateId}`,templateId,patch,(p,key)=>api.updateTaskTemplate(templateId,p,key));
+        state.submittingModal = false;
+        state.activeModal = null;
+        await refreshBootstrapAndNotify(
+          `已更新周期任务模板「${title}」（规则修改从下一周期生效，历史实例快照已锁定）`
+        );
+      } catch (err) {
+        state.submittingModal = false;
+        handleApiError(err, { insideModal: true });
+      }
+      return;
+    }
+
+    if (form.id === 'ld-form-revoke-task') {
+      const taskId = form.getAttribute('data-task-id') ?? '';
+      const baseVersion = Number(form.getAttribute('data-base-version') ?? '1');
+      const mode = (form.getAttribute('data-revoke-mode') ?? 'revoke') as 'revoke' | 'cancel';
+      const fd = new FormData(form);
+      const reason = String(fd.get('reason') ?? '').trim();
+      state.submittingModal = true;
+      renderModalRegionOnly(true);
+      try {
+        if (mode === 'revoke') {
+          await submitPhase2Command('revoke-task',`phase2:revoke:${taskId}`,taskId,{base_version:baseVersion,reason},(p,key)=>api.revokeTask(taskId,p.base_version,p.reason,key));
+        } else {
+          await submitPhase2Command('cancel-task',`phase2:cancel:${taskId}`,taskId,{base_version:baseVersion,reason},(p,key)=>api.cancelTask(taskId,p.base_version,p.reason,key));
+        }
+        state.submittingModal = false;
+        state.activeModal = null;
+        await refreshBootstrapAndNotify(
+          mode === 'revoke'
+            ? '已撤回手动完成状态，并追加冲正流水，原奖励资格和名额保留'
+            : '已取消该任务实例（若已发奖则已追加冲销流水）'
+        );
+      } catch (err) {
+        state.submittingModal = false;
+        handleApiError(err, { insideModal: true });
+      }
+      return;
+    }
+
+    if (form.id === 'ld-form-create-achievement-series') {
+      const fd = new FormData(form);
+      const module_id = String(fd.get('module_id') ?? '');
+      const name=String(fd.get('name')??'').trim();
+      const record_type_id=String(fd.get('record_type_id')??'');
+      const aggregation=String(fd.get('aggregation')??'distinct_days') as 'count'|'distinct_days'|'sum';
+      const field_key=aggregation==='sum'?String(fd.get('field_key')??''):null;
+      const unit=String(fd.get('unit')??'天');
+      const timezone=String(fd.get('timezone')??'Asia/Shanghai');
+      const history_policy=String(fd.get('history_policy')??'include_existing') as 'include_existing'|'from_activation';
+      const labels=String(fd.get('milestones_labels')??'').split(/[,，]/).map(v=>v.trim());
+      const milestones:AchievementSeriesMilestoneInput[]=String(fd.get('milestones_thresholds')??'').split(/[,，]/).filter(v=>v.trim()).map((v,i)=>({id:generateUuid(),threshold:v.trim(),label:labels[i]??''}));
+
+      await submitConfigCreationReliably(
+        'create-achievement-series',
+        entityId =>
+          ({
+            id: entityId,
+            module_id,
+            record_type_id,aggregation,field_key,unit,timezone,filters:[],
+            name,history_policy,milestones
+          }) satisfies AchievementSeriesInput,
+        (payload, opId) => api.createAchievementSeries(payload, opId),
+        payload => `已创建成就系列「${payload.name}」（含 ${payload.milestones.length} 个里程碑档位）`,
+        true
+      );
+      return;
+    }
+
+    if (form.id === 'ld-form-write-observation') {
+      const obs=state.observationForm;if(!obs)return;
+      const fd=new FormData(form),field=(state.profile?.module_fields??[]).find(f=>f.id===obs.fieldId);
+      if(!field)return;
+      const key=`phase2:observation:${field.id}`;
+      const mode=String(fd.get('obs_mode')??'new');
+      const value=String(fd.get('value')??'').trim();
+      const context_values:Record<string,string|number|boolean|null>={};
+      const tpl=data.record_types.find(t=>t.id===field.binding?.record_type_id);
+      for(const f of tpl?.fields??[]){if(f.key===field.binding?.field_key)continue;const raw=fd.get('ctx_'+f.key);if(raw===null)continue;const v=String(raw);context_values[f.key]=f.type==='integer'?Number(v):f.type==='boolean'?v==='true':v;}
+      obs.rawValue=value;obs.occurredAt=String(fd.get('occurred_at')??'');obs.timezone=String(fd.get('timezone')??'');obs.mode=mode==='correct'?'correct':'new';
+      obs.contextValues=Object.fromEntries(Object.entries(context_values).map(([k,v])=>[k,String(v)]));
+      const payload:ObservationWriteInput={id:obs.entityId,field_id:field.id,occurred_at:obs.occurredAt,timezone:obs.timezone,value:field.type==='integer'?Number(value):value,context_values};
+      if(mode==='correct'){payload.source_record_id=String(fd.get('source_record_id')??'');payload.source_base_version=Number(fd.get('source_base_version'));}
+      const draft=extractConfigFormDraft(form,state);if(draft&&!saveConfigDraft(draft)){obs.validationError={code:'LOCAL_STORAGE_FAILED',message:getStorageIssue()??'未保存本机，尚未发送'};renderModalRegionOnly(true);return;}
+      state.submittingModal=true;obs.submissionStatus='submitting';obs.validationError=null;obs.conflictError=null;renderModalRegionOnly(true);
+      try{
+        const saved=await submitPhase2Command('write-observation',key,obs.entityId,payload,(p,key)=>api.writeProfileObservation(p,key));
+        obs.submissionStatus='confirmed_server';obs.operationId=null;
+        if(saved.hadNewEdits){obs.entityId=generateUuid();if(draft)saveConfigDraft({...draft,entityId:obs.entityId});obs.lastImpactSummary='上次提交已确认；你后来编辑的内容仍未提交。请核对后再次保存。';}
+        else{clearConfigDraft('observation:'+field.id);state.activeModal=null;state.observationForm=null;}
+        await refreshBootstrapAndNotify(saved.hadNewEdits?'已确认上次观测，后续编辑尚未提交':'观测来源记录已保存，相关数值、任务、成就和钱包已重算',true,true);
+      }catch(error){
+        const d=describeApiError(error);obs.submissionStatus=isUnknownNetworkError(error)?'unknown_network':error instanceof ApiClientError&&error.status===409?'conflict_pending':'validation_error';
+        if(obs.submissionStatus==='conflict_pending')obs.conflictError={code:d.code??'VERSION_CONFLICT',message:d.message};else obs.validationError={code:d.code??'ERROR',message:d.message};
+        obs.operationId=getPendingConfigMutation(key)?.operationId??null;
+        renderModalRegionOnly(true);
+      }finally{state.submittingModal=false;renderModalRegionOnly(true);}
       return;
     }
   });

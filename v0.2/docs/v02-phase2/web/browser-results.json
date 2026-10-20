@@ -1,0 +1,67 @@
+{
+  "steps": [
+    {
+      "name": "empty home and disabled capabilities",
+      "status": "PASS"
+    },
+    {
+      "name": "template lost receipt, refresh and frozen replay keeps later edits",
+      "status": "PASS"
+    },
+    {
+      "name": "custom module series form uses thresholds and real source aggregation",
+      "status": "PASS"
+    },
+    {
+      "name": "profile observation binding saves configuration without inventing a record",
+      "status": "PASS"
+    },
+    {
+      "name": "observation storage failure prevents sending and lost receipt replay stays unique",
+      "status": "PASS"
+    },
+    {
+      "name": "correction conflict keeps input and requires explicit version adoption",
+      "status": "PASS"
+    },
+    {
+      "name": "restoring evidence reuses award and reward chain; wallet sources and task filtering",
+      "status": "PASS"
+    },
+    {
+      "name": "trend controls, keyboard details, view exclusions and exact home pin",
+      "status": "PASS"
+    },
+    {
+      "name": "mobile 360px, reduced motion and minimal mode preserve drafts and pins",
+      "status": "PASS"
+    },
+    {
+      "name": "derived profile field is read-only, source-backed and configuration does not award coins",
+      "status": "PASS"
+    },
+    {
+      "name": "future template changes preserve locked current rule; manual revoke and cancel are terminal",
+      "status": "PASS"
+    },
+    {
+      "name": "delete evidence and recreate source restore original award and reward qualification",
+      "status": "PASS"
+    },
+    {
+      "name": "archived pinned sources show warnings and can be removed without retaining stale pins",
+      "status": "PASS"
+    },
+    {
+      "name": "wallet real pagination reads the next page and returns to its task source",
+      "status": "PASS"
+    },
+    {
+      "name": "no uncaught browser errors and zero model requests",
+      "status": "PASS"
+    }
+  ],
+  "errors": [],
+  "browser": "156.0.8078.4",
+  "mobile_real_device": false
+}

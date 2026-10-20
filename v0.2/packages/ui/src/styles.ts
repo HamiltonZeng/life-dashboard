@@ -1256,4 +1256,135 @@ html, body {
     max-width: none;
   }
 }
+
+/* v0.2 Phase 2: Trends, Periodic Tasks, Series Milestones, Wallet & Observation Diff */
+.ld-trend-chart-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--ld-radius-md);
+  background: var(--ld-bg-elevated);
+  border: 1px solid var(--ld-border);
+}
+
+.ld-trend-svg {
+  width: 100%;
+  height: 190px;
+  display: block;
+  overflow: visible;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.ld-trend-point {
+  cursor: pointer;
+  transition: r 0.12s ease;
+}
+
+.ld-trend-point:focus-visible {
+  outline: 2px solid var(--ld-accent);
+  outline-offset: 3px;
+}
+
+.ld-trend-tooltip {
+  padding: 10px 12px;
+  border-radius: var(--ld-radius-sm);
+  background: var(--ld-bg-card);
+  border: 1px solid var(--ld-border-strong);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ld-trend-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ld-wallet-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.ld-wallet-stat-box {
+  padding: 12px 14px;
+  border-radius: var(--ld-radius-md);
+  background: var(--ld-bg-elevated);
+  border: 1px solid var(--ld-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ld-wallet-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ld-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ld-series-milestone-track {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ld-milestone-node {
+  padding: 10px 12px;
+  border-radius: var(--ld-radius-sm);
+  background: var(--ld-bg-elevated);
+  border: 1px solid var(--ld-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ld-milestone-node.is-unlocked {
+  border-color: rgba(16, 185, 129, 0.55);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.ld-milestone-node.is-needs-review {
+  border-color: rgba(245, 158, 11, 0.6);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.ld-color-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  vertical-align: middle;
+}
+
+.ld-obs-diff-box {
+  padding: 10px 12px;
+  border-radius: var(--ld-radius-sm);
+  background: var(--ld-bg-elevated);
+  border: 1px solid var(--ld-border-strong);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ld-ai-context-box {
+  padding: 10px 14px;
+  border-radius: var(--ld-radius-md);
+  background: var(--ld-bg-elevated);
+  border: 1px dashed var(--ld-border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 `;

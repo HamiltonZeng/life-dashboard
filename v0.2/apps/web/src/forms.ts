@@ -263,7 +263,16 @@ export function extractProfileFormToState(form: HTMLFormElement, state: AppState
     const valEl = row.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-pf-prop="value"]');
     const nullEl = row.querySelector<HTMLInputElement>('[data-pf-prop="is_null"]');
 
-    const fType = (typeEl?.value ?? 'text') as ProfileFieldType;
+    const kindEl = row.querySelector<HTMLInputElement | HTMLSelectElement>('[data-pf-prop="kind"]');
+    const bindTplEl = row.querySelector<HTMLSelectElement | HTMLInputElement>('[data-pf-prop="binding_record_type_id"]');
+    const bindFieldKeyEl = row.querySelector<HTMLSelectElement | HTMLInputElement>('[data-pf-prop="binding_field_key"]');
+    const bindMetricEl = row.querySelector<HTMLSelectElement | HTMLInputElement>('[data-pf-prop="binding_metric_id"]');
+
+    const fKind = (kindEl?.value ?? row.getAttribute('data-field-kind') ?? 'profile') as
+      | 'profile'
+      | 'observation'
+      | 'derived';
+    const fType = (fKind === 'derived' ? 'decimal' : typeEl?.value ?? 'text') as ProfileFieldType;
     const isNull = nullEl ? nullEl.checked : false;
     const rawVal = valEl ? valEl.value : '';
     const options = (optsEl?.value ?? '')
@@ -272,7 +281,7 @@ export function extractProfileFormToState(form: HTMLFormElement, state: AppState
       .filter(Boolean);
 
     let parsedValue: string | number | boolean | null = null;
-    if (!isNull) {
+    if (fKind === 'profile' && !isNull) {
       if (fType === 'integer') {
         if (rawVal.trim() === '') parsedValue = null;
         else {
@@ -290,17 +299,29 @@ export function extractProfileFormToState(form: HTMLFormElement, state: AppState
       }
     }
 
-    updatedFields.push({
+    const fieldRow: ProfileFieldRow = {
       id,
       module_id: modEl?.value ?? '',
       key: (keyEl?.value ?? '').trim(),
       label: (labelEl?.value ?? '').trim(),
       type: fType,
-      kind: 'profile',
-      value: parsedValue,
+      kind: fKind,
+      value: fKind === 'profile' ? parsedValue : null,
       unit: (unitEl?.value ?? '').trim() || null,
-      options
-    });
+      options: fKind === 'profile' ? options : []
+    };
+    if (fKind === 'observation') {
+      fieldRow.binding = {
+        record_type_id: bindTplEl?.value ?? '',
+        field_key: bindFieldKeyEl?.value ?? ''
+      };
+    } else if (fKind === 'derived') {
+      fieldRow.binding = {
+        metric_id: bindMetricEl?.value ?? ''
+      };
+    }
+
+    updatedFields.push(fieldRow);
   });
 
   if (rows.length > 0 || state.profileForm.fields.length === 0) {
@@ -613,6 +634,25 @@ export function bindDynamicModalControllers(
   if (metricTplSelect) metricTplSelect.onchange = syncMetricFields;
   if (metricAggSelect) metricAggSelect.onchange = syncMetricFields;
   if (metricFieldSelect) metricFieldSelect.onchange = syncMetricFields;
+
+  // Phase-two cascades update options without losing the persisted working draft.
+  for(const prefix of ['tt','series']){
+    const module=document.getElementById(prefix==='tt'?'ld-tt-module-select':'ld-series-module-select') as HTMLSelectElement|null;
+    const template=document.getElementById(prefix==='tt'?'ld-tt-record-type-select':'ld-series-template-select') as HTMLSelectElement|null;
+    const field=document.getElementById(prefix==='tt'?'ld-tt-field-select':'ld-series-field-select') as HTMLSelectElement|null;
+    if(!module||!template||!field)continue;
+    const syncFields=()=>{const rt=data.record_types.find(r=>r.id===template.value);const old=field.value;field.innerHTML=(rt?.fields??[]).filter(f=>['integer','decimal'].includes(f.type)).map(f=>`<option value="${escapeHtml(f.key)}">${escapeHtml(f.label)}</option>`).join('');if([...field.options].some(o=>o.value===old))field.value=old;const unit=document.querySelector<HTMLInputElement>(`#${prefix==='tt'?'ld-form-create-task-template':'ld-form-create-achievement-series'} [name=unit]`);if(unit&&prefix==='tt')unit.value=rt?.fields.find(f=>f.key===field.value)?.unit??'';};
+    module.onchange=()=>{template.innerHTML=data.record_types.filter(t=>t.module_id===module.value).map(t=>`<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join('');syncFields();};template.onchange=syncFields;
+    field.onchange=()=>{const unit=document.querySelector<HTMLInputElement>(`#${prefix==='tt'?'ld-form-create-task-template':'ld-form-create-achievement-series'} [name=unit]`);const agg=document.getElementById('ld-series-agg-select') as HTMLSelectElement|null;if(unit&&(prefix==='tt'||agg?.value==='sum'))unit.value=data.record_types.find(t=>t.id===template.value)?.fields.find(f=>f.key===field.value)?.unit??'';};
+  }
+  const agg=document.getElementById('ld-series-agg-select') as HTMLSelectElement|null;
+  if(agg)agg.onchange=()=>{const f=document.querySelector<HTMLFormElement>('#ld-form-create-achievement-series');if(!f)return;const unit=f.querySelector<HTMLInputElement>('[name=unit]')!,rt=f.querySelector<HTMLSelectElement>('[name=record_type_id]')!,field=f.querySelector<HTMLSelectElement>('[name=field_key]')!;unit.value=agg.value==='sum'?data.record_types.find(t=>t.id===rt.value)?.fields.find(k=>k.key===field.value)?.unit??'':agg.value==='count'?'次':'天';};
+  const cat=document.getElementById('ld-tt-category-select') as HTMLSelectElement|null;
+  if(cat)cat.onchange=()=>{const g=document.getElementById('ld-tt-due-group');if(g)g.style.display=cat.value==='main'?'grid':'none';};
+  const mode=document.getElementById('ld-tt-mode-select') as HTMLSelectElement|null;
+  if(mode)mode.onchange=()=>{const g=document.getElementById('ld-tt-rule-group');if(g)g.style.display=mode.value==='manual'?'none':'flex';};
+  const obs=document.getElementById('ld-form-write-observation') as HTMLFormElement|null;
+  if(obs){const sync=()=>{const o=state.observationForm;if(!o)return;const f=new FormData(obs);o.rawValue=String(f.get('value')??'');o.occurredAt=String(f.get('occurred_at')??'');o.timezone=String(f.get('timezone')??'');o.mode=f.get('obs_mode')==='correct'?'correct':'new';o.contextValues=Object.fromEntries([...f].filter(([k])=>k.startsWith('ctx_')).map(([k,v])=>[k.slice(4),String(v)]));};obs.addEventListener('input',sync);obs.addEventListener('change',sync);const m=document.getElementById('ld-obs-mode-select');m?.addEventListener('change',()=>{sync();onRerenderModalOnly();});}
 
   // Create Achievement modal module -> metric cascade
   const achModSelect = document.getElementById('ld-ach-module-select') as HTMLSelectElement | null;

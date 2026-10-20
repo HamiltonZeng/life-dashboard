@@ -7,6 +7,7 @@ import {
   MODULE_ICON_LABELS,
   renderModuleBadge,
   SUBMISSION_STATE_META,
+  TASK_CATEGORY_META,
   TASK_STATUS_META,
   type ModuleIconName
 } from '../../../packages/ui/src/index.js';
@@ -18,6 +19,12 @@ import {
   formatDateTime,
   getLocalIsoWithOffset
 } from './panels.js';
+import { renderPhase2Modal } from './phase2-modals.js';
+import {
+  describePhase2Rule,
+  renderColorSwatchBadge,
+  renderTaskRewardPill
+} from './phase2-views.js';
 import type { AppState } from './state.js';
 import {
   buildConfigDraftKey,
@@ -209,6 +216,9 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
   const modal = state.activeModal;
   if (!modal) return '';
 
+  const phase2Html = renderPhase2Modal(state, data);
+  if (phase2Html !== null) return phase2Html;
+
   const enabledModules = data.modules.filter(m => m.status === 'enabled');
   const userTz = state.user?.timezone ?? 'Asia/Shanghai';
 
@@ -323,15 +333,24 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
   }
 
   if (modal.kind === 'task-detail') {
-    const task = data.tasks.find(t => t.id === modal.taskId);
+    const task =
+      state.taskInstances.find(t => t.id === modal.taskId) ??
+      data.tasks.find(t => t.id === modal.taskId);
     if (!task) return '';
     const mod = findModule(data, task.module_id);
-    const linked = data.records.filter(r => r.task_ids.includes(task.id));
+    const sourceIds = new Set([
+      ...(task.progress?.source_record_ids ?? []),
+      ...data.records.filter(r => r.task_ids.includes(task.id)).map(r => r.id)
+    ]);
+    const linked = data.records.filter(r => sourceIds.has(r.id));
     const partialDiag = diagnosePartialTask(data, task);
     const isClosedTask = task.status === 'cancelled' || task.status === 'skipped';
+    const catMeta = task.category ? TASK_CATEGORY_META[task.category] : undefined;
+    const canRevokeManual =
+      task.status === 'completed' && task.completion_origin === 'manual';
 
     return `<div class="ld-modal-backdrop" data-action="close-modal-backdrop">
-      <div class="ld-modal">
+      <div class="ld-modal" id="ld-modal-task-detail" data-task-detail="${escapeHtml(task.id)}">
         <div class="ld-modal-header">
           <h2 class="ld-modal-title">任务详情与完成依据</h2>
           <button type="button" class="ld-btn ld-btn-sm" data-action="close-modal">✕</button>
@@ -339,22 +358,34 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
         <div class="ld-modal-body">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             ${renderModuleBadge(mod)}
+            ${catMeta ? `<span class="ld-badge ld-badge-info">${escapeHtml(catMeta.label)}</span>` : ''}
+            ${task.color ? renderColorSwatchBadge(task.color) : ''}
             <span class="ld-badge">${escapeHtml(TASK_STATUS_META[task.status]?.label ?? task.status)}</span>
             ${task.needs_review ? `<span class="ld-badge ld-badge-warning">⚠ 完成依据变化，待复核</span>` : ''}
             ${isClosedTask ? `<span class="ld-badge ld-badge-danger">已关闭状态（不可再完成）</span>` : ''}
           </div>
           <h3 style="margin:0;font-size:18px;">${escapeHtml(task.definition.title)}</h3>
+          ${task.reward_summary ? renderTaskRewardPill(task.reward_summary, task.category) : ''}
           <div class="ld-card-meta" style="flex-direction:column;align-items:flex-start;gap:4px;">
-            <div><strong>验收条件：</strong>${escapeHtml(describeTaskAcceptance(data, task))}</div>
-            <div><strong>计划日期：</strong>${escapeHtml(task.definition.business_date ?? '不限日期')} · <strong>时区：</strong>${escapeHtml(task.definition.timezone)}</div>
-            <div><strong>规则版本：</strong>v${task.rule_version} · <strong>实例版本：</strong>v${task.version} · <strong>实例 ID：</strong><code>${escapeHtml(task.id)}</code></div>
+            <div><strong>验收条件：</strong>${escapeHtml(task.locked_rule ? describePhase2Rule(data, task.locked_rule) : describeTaskAcceptance(data, task))}</div>
+            ${
+              task.period
+                ? `<div><strong>周期半开边界 (UTC)：</strong><code>[${escapeHtml(task.period.start)}, ${escapeHtml(task.period.end ?? '∞')})</code> · <strong>锁定时区：</strong><code>${escapeHtml(task.period.timezone)}</code></div>`
+                : `<div><strong>计划日期：</strong>${escapeHtml(task.definition.business_date ?? '不限日期')} · <strong>时区：</strong>${escapeHtml(task.definition.timezone)}</div>`
+            }
+            ${
+              task.progress
+                ? `<div><strong>真实累计进度：</strong><code>${escapeHtml(String(task.progress.value ?? '0'))} / ${escapeHtml(String(task.progress.target ?? '1'))}</code> · <strong>覆盖不同自然日：</strong>${escapeHtml(task.progress.distinct_dates.join(', ') || '无')}</div>`
+                : ''
+            }
+            <div><strong>模板版本：</strong>v${task.template_version ?? task.rule_version} · <strong>实例版本：</strong>v${task.version} · <strong>实例 ID：</strong><code>${escapeHtml(task.id)}</code></div>
           </div>
           ${partialDiag ? `<div class="ld-badge ld-badge-warning" style="padding:8px 12px;">${escapeHtml(partialDiag)}</div>` : ''}
           <div>
-            <h4 style="margin:6px 0 8px;">关联的完成依据记录 (${linked.length})</h4>
+            <h4 style="margin:6px 0 8px;">关联或周期匹配的完成依据记录 (${linked.length})</h4>
             ${
               linked.length === 0
-                ? `<div class="ld-card-meta">尚未关联任何记录。</div>`
+                ? `<div class="ld-card-meta">尚未关联或匹配任何记录。</div>`
                 : `<div class="ld-card-list">
                     ${linked
                       .map(r => {
@@ -373,11 +404,23 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
           </div>
         </div>
         <div class="ld-modal-footer">
-          ${
-            !isClosedTask && task.definition.completion_mode !== 'manual'
-              ? `<button type="button" class="ld-btn ld-btn-primary" data-action="task-go-record" data-task-id="${escapeHtml(task.id)}">去记录</button>`
-              : ''
-          }
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${
+              canRevokeManual
+                ? `<button type="button" class="ld-btn ld-btn-warning" data-action="open-revoke-task" data-task-id="${escapeHtml(task.id)}">撤回手动完成</button>`
+                : ''
+            }
+            ${
+              !isClosedTask && task.period !== undefined && task.period !== null
+                ? `<button type="button" class="ld-btn ld-btn-danger" data-action="open-cancel-task" data-task-id="${escapeHtml(task.id)}">取消任务实例</button>`
+                : ''
+            }
+            ${
+              !isClosedTask && task.definition.completion_mode !== 'manual'
+                ? `<button type="button" class="ld-btn ld-btn-primary" data-action="task-go-record" data-task-id="${escapeHtml(task.id)}">去记录</button>`
+                : ''
+            }
+          </div>
           <button type="button" class="ld-btn" data-action="close-modal">关闭</button>
         </div>
       </div>
@@ -627,7 +670,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
     const linkedTasks = data.tasks.filter(t => r.task_ids.includes(t.id));
 
     return `<div class="ld-modal-backdrop" data-action="close-modal-backdrop">
-      <div class="ld-modal">
+      <div class="ld-modal" id="ld-modal-record-detail">
         <div class="ld-modal-header">
           <h2 class="ld-modal-title">记录详情与修订审计</h2>
           <button type="button" class="ld-btn ld-btn-sm" data-action="close-modal">✕</button>

@@ -9,8 +9,17 @@ import {
   renderModuleBadge,
   renderStaticAvatarSlot,
   SUBMISSION_STATE_META,
+  TASK_CATEGORY_META,
   TASK_STATUS_META
 } from '../../../packages/ui/src/index.js';
+import {
+  isTaskOrTemplatePinned,
+  renderColorSwatchBadge,
+  renderMetricTrendSection,
+  renderPanelAiContextBar,
+  renderTaskRewardPill,
+  renderWalletSummaryCard
+} from './phase2-views.js';
 import type { AppState } from './state.js';
 import {
   buildConfigDraftKey,
@@ -413,12 +422,14 @@ export function renderHomePanel(
                 badge: '',
                 actionLabel: '去记录'
               };
-              const isPinned = pinnedTaskIds.includes(t.id);
+              const pinState = isTaskOrTemplatePinned(state, t);
+              const isPinned = pinnedTaskIds.includes(t.id) || pinState.isPinned;
               const pinIdx = pinnedTaskIds.indexOf(t.id);
+              const catMeta = t.category ? TASK_CATEGORY_META[t.category] : undefined;
               const statusBadgeClass =
                 t.status === 'completed'
                   ? 'ld-badge-success'
-                  : t.status === 'partial'
+                  : t.status === 'partial' || t.status === 'ended'
                     ? 'ld-badge-warning'
                     : 'ld-badge-info';
 
@@ -427,11 +438,19 @@ export function renderHomePanel(
                   <div style="display:flex;flex-direction:column;gap:4px;">
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                       ${renderModuleBadge(mod, true)}
+                      ${catMeta ? `<span class="ld-badge ld-badge-info">${escapeHtml(catMeta.shortLabel)}</span>` : ''}
+                      ${t.color ? renderColorSwatchBadge(t.color) : ''}
                       <span class="ld-badge">${escapeHtml(modeMeta.label)}</span>
-                      <span class="ld-badge">${t.definition.business_date ? `日期: ${escapeHtml(t.definition.business_date)}` : '不限日期'}</span>
+                      <span class="ld-badge">${t.period ? `周期: ${escapeHtml(t.period.start.slice(0, 10))}${t.period.end ? ` ~ ${escapeHtml(t.period.end.slice(0, 10))}` : ''}` : t.definition.business_date ? `日期: ${escapeHtml(t.definition.business_date)}` : '不限日期'}</span>
                       ${isPinned ? '<span class="ld-badge ld-badge-success">📌 已固定</span>' : ''}
                     </div>
                     <h4 class="ld-card-title">${escapeHtml(t.definition.title)}</h4>
+                    ${
+                      t.progress && t.progress.target
+                        ? `<div class="ld-card-meta"><span>当前周期进度：<strong>${escapeHtml(String(t.progress.value ?? '0'))} / ${escapeHtml(t.progress.target)}</strong>（来源记录 ${t.progress.source_record_ids.length} 条）</span></div>`
+                        : ''
+                    }
+                    ${t.reward_summary ? renderTaskRewardPill(t.reward_summary, t.category) : ''}
                   </div>
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                     ${t.needs_review ? `<span class="ld-badge ld-badge-warning">⚠ 待复核</span>` : ''}
@@ -481,29 +500,38 @@ export function renderHomePanel(
           ${displayedAchievements
             .map(a => {
               const mod = findModule(data, a.module_id);
-              const metric = home.metrics.find(m => m.id === a.definition.metric_id) ??
-                data?.metrics.find(m => m.id === a.definition.metric_id);
-              const unit = metric?.definition.unit ?? '';
-              return `<article class="ld-card" data-home-achievement-card="${escapeHtml(a.achievement_id)}">
+              const isMilestone = Boolean(a.series_id || a.milestone_id || a.threshold);
+              const defAny = a.definition as any;
+              const metric = defAny?.metric_id
+                ? home.metrics.find(m => m.id === defAny.metric_id) ??
+                  data?.metrics.find(m => m.id === defAny.metric_id)
+                : undefined;
+              const unit = defAny?.unit ?? metric?.definition.unit ?? '';
+              const thresholdVal = a.threshold ?? defAny?.threshold ?? '';
+              const operatorSym = defAny?.operator === 'lte' ? '≤' : '≥';
+              const cardKey = a.achievement_id || a.series_id || a.id;
+
+              return `<article class="ld-card" data-home-achievement-card="${escapeHtml(cardKey)}" ${a.milestone_id ? `data-home-milestone-id="${escapeHtml(a.milestone_id)}"` : ''}>
                 <div class="ld-card-top">
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     ${renderModuleBadge(mod, true)}
-                    <span class="ld-badge ld-badge-success">🏆 有效授予</span>
+                    <span class="ld-badge ld-badge-success">🏆 ${isMilestone ? '系列里程碑授予' : '有效授予'}</span>
+                    ${a.label ? `<span class="ld-badge ld-badge-info">${escapeHtml(a.label)}</span>` : ''}
                   </div>
                   <span class="ld-card-meta">${escapeHtml(formatHomeTime(a.unlocked_at))}</span>
                 </div>
                 <div>
-                  <h4 class="ld-card-title">${escapeHtml(a.definition.name)}</h4>
+                  <h4 class="ld-card-title">${escapeHtml(defAny?.name ?? '成就授予')}${a.label ? ` · ${escapeHtml(a.label)}` : ''}</h4>
                   <div class="ld-card-meta" style="margin-top:4px;">
-                    <span>达成门槛：<strong>${a.definition.operator === 'gte' ? '≥' : '≤'} ${escapeHtml(a.definition.threshold)}${unit ? ` ${escapeHtml(unit)}` : ''}</strong></span>
-                    <span>· 当前依据值：<strong>${escapeHtml(a.evidence.value ?? 'null')}${unit ? ` ${escapeHtml(unit)}` : ''}</strong> (规则 v${a.rule_version})</span>
+                    <span>具体达成门槛：<strong>${operatorSym} ${escapeHtml(String(thresholdVal))}${unit ? ` ${escapeHtml(unit)}` : ''}</strong></span>
+                    <span>· 当前依据值：<strong>${escapeHtml(a.evidence.value ?? 'null')}${unit ? ` ${escapeHtml(unit)}` : ''}</strong> (规则 v${a.rule_version ?? 1})</span>
                   </div>
                 </div>
                 <div class="ld-card-footer">
-                  <button type="button" class="ld-btn ld-btn-sm" data-action="home-achievement-evidence" data-achievement-id="${escapeHtml(a.achievement_id)}">
+                  <button type="button" class="ld-btn ld-btn-sm" data-action="home-achievement-evidence" data-achievement-id="${escapeHtml(cardKey)}" ${a.series_id ? `data-series-id="${escapeHtml(a.series_id)}"` : ''}>
                     查看解锁依据 (${a.evidence.source_record_ids.length})
                   </button>
-                  <button type="button" class="ld-btn ld-btn-sm" data-action="home-achievement-detail" data-achievement-id="${escapeHtml(a.achievement_id)}">
+                  <button type="button" class="ld-btn ld-btn-sm" data-action="home-achievement-detail" data-achievement-id="${escapeHtml(cardKey)}" ${a.series_id ? `data-series-id="${escapeHtml(a.series_id)}"` : ''}>
                     查看成就定义
                   </button>
                 </div>
@@ -511,6 +539,34 @@ export function renderHomePanel(
             })
             .join('')}
         </div>`;
+
+  const homeTrends = home.trends ?? [];
+  const trendsSectionHtml =
+    homeTrends.length > 0
+      ? `<div class="ld-card-list">
+          ${homeTrends
+            .slice(0, 2)
+            .map(entry =>
+              renderMetricTrendSection(entry.pin.metric_id, state, data, {
+                compactForHome: true,
+                explicitTrend: entry.result
+              })
+            )
+            .join('')}
+        </div>`
+      : `<div class="ld-card-meta">当前 <code>pinned_trends = []</code>，尚未固定数值趋势图（最多可固定 2 张）。可前往数值面板选择任意数值趋势并点击「📌 固定趋势到首页」，绝不生成虚构趋势折线。</div>`;
+
+  const hasRealWallet = Boolean(home.wallet || state.wallet);
+  const walletFooterHtml = hasRealWallet
+    ? renderWalletSummaryCard(state, true)
+    : `<div class="ld-card-footer" data-home-wallet="null">
+        <div class="ld-card-meta">
+          <span><strong>代币钱包：</strong><code>wallet = null</code>（系统奖励账本未开放，不显示虚拟余额 0）</span>
+        </div>
+        <span class="ld-badge">未开放兑换</span>
+      </div>`;
+
+  const achSummary = home.achievement_summary ?? state.achievementSummary;
 
   return `<main class="ld-main" id="ld-home-standard" data-home-mode="standard" aria-label="首页">
     <div class="ld-panel-container">
@@ -549,11 +605,12 @@ export function renderHomePanel(
           <section class="ld-card" id="ld-home-trends" data-home-section="trends">
             <div class="ld-card-top">
               <div>
-                <h3 class="ld-card-title">数值趋势固定区</h3>
-                <p class="ld-panel-subtitle">四时间范围日均折线图与高方差筛选将在后续阶段开放；当前 <code>pinned_trends = []</code>，不生成虚构趋势图</p>
+                <h3 class="ld-card-title">数值趋势固定区 (${homeTrends.length}/2)</h3>
+                <p class="ld-panel-subtitle">与数值面板同源计算四时间范围等权日均折线图（最多固定 2 张）；缺失日断线、0 值保留</p>
               </div>
-              <span class="ld-badge">趋势引擎未开放</span>
+              <button type="button" class="ld-btn ld-btn-sm" data-action="nav-route" data-route="/metrics">管理趋势固定</button>
             </div>
+            ${trendsSectionHtml}
           </section>
         </div>
 
@@ -578,19 +635,16 @@ export function renderHomePanel(
               <span><strong>简介：</strong>${profile.bio !== null && profile.bio !== '' ? escapeHtml(profile.bio) : '<span style="color:var(--ld-text-muted);">未填写 (null)</span>'}</span>
             </div>
             ${moduleFieldsSummary}
-            <div class="ld-card-footer" data-home-wallet="null">
-              <div class="ld-card-meta">
-                <span><strong>代币钱包：</strong><code>wallet = null</code>（系统奖励账本未开放，不显示虚拟余额 0）</span>
-              </div>
-              <span class="ld-badge">未开放兑换</span>
-            </div>
+            ${!hasRealWallet ? walletFooterHtml : ''}
           </section>
+
+          ${hasRealWallet ? walletFooterHtml : ''}
 
           <section class="ld-card" id="ld-home-tasks" data-home-section="tasks">
             <div class="ld-card-top">
               <div>
                 <h3 class="ld-card-title">今日与固定任务 (${home.tasks.length})</h3>
-                <p class="ld-panel-subtitle">当地今日 (${escapeHtml(getTodayInZone(profile.timezone))}) 任务与已固定任务去重（最多固定 5 项）</p>
+                <p class="ld-panel-subtitle">当前周期委托实例、当地今日 (${escapeHtml(getTodayInZone(profile.timezone))}) 任务与已固定任务去重（最多固定 5 项）</p>
               </div>
               <button type="button" class="ld-btn ld-btn-sm" data-action="nav-route" data-route="/tasks">查看全部</button>
             </div>
@@ -600,8 +654,8 @@ export function renderHomePanel(
           <section class="ld-card" id="ld-home-achievements" data-home-section="achievements">
             <div class="ld-card-top">
               <div>
-                <h3 class="ld-card-title">近期成就 (${home.recent_achievements.length})</h3>
-                <p class="ld-panel-subtitle">最近有效授予的成就，点击可追溯解锁依据与定义</p>
+                <h3 class="ld-card-title">近期成就与里程碑 (${home.recent_achievements.length})</h3>
+                <p class="ld-panel-subtitle">最近有效授予的成就与具体里程碑门槛${achSummary ? `（有效授予总数 ${achSummary.effective_awards_count} · 已达成系列 ${achSummary.achieved_series_count} · 待复核 ${achSummary.needs_review_count}）` : ''}</p>
               </div>
               <button type="button" class="ld-btn ld-btn-sm" data-action="nav-route" data-route="/achievements">查看全部</button>
             </div>
@@ -676,7 +730,7 @@ export function renderSettingsProfileSection(state: AppState, data: BootstrapDat
     : '';
 
   const conflictPanelHtml = pf.conflictError
-    ? `<div class="ld-conflict-panel" role="alert" data-conflict-code="${escapeHtml(pf.conflictError.code)}">
+    ? `<div class="ld-conflict-panel" id="ld-profile-conflict-panel" role="alert" data-conflict-code="${escapeHtml(pf.conflictError.code)}">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
           <div>
             <strong>⚠ 个人资料版本冲突 (${escapeHtml(pf.conflictError.code)})：</strong>${escapeHtml(pf.conflictError.message)}
@@ -717,15 +771,182 @@ export function renderSettingsProfileSection(state: AppState, data: BootstrapDat
 
   const fieldRowsHtml =
     pf.fields.length === 0
-      ? `<div class="ld-card-meta">当前暂无模块个人资料字段。点击下方「＋ 新增模块资料字段」可在四个默认模块或自定义模块下添加合法业务字段（包括 <code>session</code> 等字段名）。</div>`
+      ? `<div class="ld-card-meta">当前暂无模块个人资料字段。点击下方按钮可在四个默认模块或自定义模块下添加「资料/配置 (profile)」、「观测绑定 (observation)」或「派生只读 (derived)」字段。</div>`
       : `<div class="ld-card-list">
           ${pf.fields
             .map(f => {
               const mod = findModule(data, f.module_id);
               const modEditable = !mod || mod.status === 'enabled';
+              const serverField = state.profile?.module_fields.find(sf => sf.id === f.id);
+              const hydratedValue = serverField?.value ?? f.value;
+              const sourceRef = serverField?.source_ref ?? f.source_ref;
               const isNull = f.value === null || f.value === undefined;
               const valStr = isNull ? '' : String(f.value);
               const optionsStr = (f.options ?? []).join(', ');
+              const modTemplates = data.record_types.filter(rt => rt.module_id === f.module_id);
+              const modMetrics = data.metrics.filter(m => m.module_id === f.module_id);
+
+              if (f.kind === 'observation') {
+                const boundTplId = f.binding?.record_type_id ?? modTemplates[0]?.id ?? '';
+                const boundTpl = modTemplates.find(rt => rt.id === boundTplId) ?? modTemplates[0];
+                const numFields = (boundTpl?.fields ?? []).filter(tf =>
+                  ['integer', 'decimal'].includes(tf.type)
+                );
+                const boundFieldKey = f.binding?.field_key ?? numFields[0]?.key ?? '';
+
+                return `<div class="ld-card" style="padding:12px 14px;" data-profile-field-row="${escapeHtml(f.id)}" data-field-key="${escapeHtml(f.key)}" data-field-kind="observation">
+                  <input type="hidden" data-pf-prop="kind" value="observation" />
+                  <div class="ld-card-top">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                      ${renderModuleBadge(mod, true)}
+                      <span class="ld-badge ld-badge-warning">kind = observation (观测字段 · 来源记录驱动)</span>
+                      <span class="ld-badge">最新观测值：<strong>${hydratedValue !== null && hydratedValue !== undefined ? `${escapeHtml(String(hydratedValue))}${f.unit ? ` ${escapeHtml(f.unit)}` : ''}` : '暂无来源记录 (null)'}</strong></span>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <button type="button" class="ld-btn ld-btn-sm ld-btn-primary" data-action="open-write-observation" data-field-id="${escapeHtml(f.id)}" data-obs-mode="new" ${!modEditable ? 'disabled' : ''}>
+                        ＋ 新增发生时间观测
+                      </button>
+                      ${
+                        sourceRef?.record_id
+                          ? `<button type="button" class="ld-btn ld-btn-sm" data-action="open-write-observation" data-field-id="${escapeHtml(f.id)}" data-obs-mode="correct" ${!modEditable ? 'disabled' : ''}>
+                              纠错最新来源记录 (v${sourceRef.version ?? 1})
+                            </button>
+                            <button type="button" class="ld-btn ld-btn-sm" data-action="profile-jump-source-record" data-record-id="${escapeHtml(sourceRef.record_id)}">
+                              查看来源记录 →
+                            </button>`
+                          : ''
+                      }
+                      <button type="button" class="ld-btn ld-btn-sm ld-btn-danger" data-action="profile-remove-field" data-field-id="${escapeHtml(f.id)}" ${!modEditable ? 'disabled' : ''}>移除字段</button>
+                    </div>
+                  </div>
+                  <div class="ld-form-row">
+                    <label class="ld-field">
+                      <span class="ld-label">所属模块 *</span>
+                      <select class="ld-select" data-pf-prop="module_id" ${!modEditable ? 'disabled' : ''}>
+                        ${data.modules
+                          .filter(m => m.status === 'enabled' || m.id === f.module_id)
+                          .map(
+                            m =>
+                              `<option value="${escapeHtml(m.id)}" ${m.id === f.module_id ? 'selected' : ''}>${escapeHtml(m.name)}</option>`
+                          )
+                          .join('')}
+                      </select>
+                    </label>
+                    <label class="ld-field">
+                      <span class="ld-label">字段 key *</span>
+                      <input class="ld-input" type="text" data-pf-prop="key" value="${escapeHtml(f.key)}" pattern="^[a-z][a-z0-9_]{0,63}$" required ${!modEditable ? 'disabled' : ''} />
+                    </label>
+                    <label class="ld-field">
+                      <span class="ld-label">显示名称 (label) *</span>
+                      <input class="ld-input" type="text" data-pf-prop="label" value="${escapeHtml(f.label)}" maxlength="60" required ${!modEditable ? 'disabled' : ''} />
+                    </label>
+                    <label class="ld-field">
+                      <span class="ld-label">数值类型 (integer / decimal) *</span>
+                      <select class="ld-select" data-pf-prop="type" ${!modEditable ? 'disabled' : ''}>
+                        <option value="decimal" ${f.type === 'decimal' ? 'selected' : ''}>精确小数 (decimal)</option>
+                        <option value="integer" ${f.type === 'integer' ? 'selected' : ''}>整数 (integer)</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="ld-form-row">
+                    <label class="ld-field">
+                      <span class="ld-label">绑定记录模板 (binding.record_type_id) *</span>
+                      <select class="ld-select" data-pf-prop="binding_record_type_id" ${!modEditable ? 'disabled' : ''}>
+                        ${modTemplates
+                          .map(
+                            rt =>
+                              `<option value="${escapeHtml(rt.id)}" ${rt.id === boundTplId ? 'selected' : ''}>${escapeHtml(rt.name)}</option>`
+                          )
+                          .join('')}
+                      </select>
+                    </label>
+                    <label class="ld-field">
+                      <span class="ld-label">绑定数值字段 (binding.field_key) *</span>
+                      <select class="ld-select" data-pf-prop="binding_field_key" ${!modEditable ? 'disabled' : ''}>
+                        ${numFields
+                          .map(
+                            nf =>
+                              `<option value="${escapeHtml(nf.key)}" ${nf.key === boundFieldKey ? 'selected' : ''}>${escapeHtml(nf.label)} (${escapeHtml(nf.key)}${nf.unit ? ` / ${escapeHtml(nf.unit)}` : ''})</option>`
+                          )
+                          .join('')}
+                      </select>
+                    </label>
+                    <label class="ld-field">
+                      <span class="ld-label">单位 (须与绑定字段一致)</span>
+                      <input class="ld-input" type="text" data-pf-prop="unit" value="${escapeHtml(f.unit ?? '')}" maxlength="30" ${!modEditable ? 'disabled' : ''} />
+                    </label>
+                  </div>
+                </div>`;
+              }
+
+              if (f.kind === 'derived') {
+                const boundMetricId = f.binding?.metric_id ?? modMetrics[0]?.id ?? '';
+                return `<div class="ld-card" style="padding:12px 14px;" data-profile-field-row="${escapeHtml(f.id)}" data-field-key="${escapeHtml(f.key)}" data-field-kind="derived">
+                  <input type="hidden" data-pf-prop="kind" value="derived" />
+                  <input type="hidden" data-pf-prop="type" value="decimal" />
+                  <div class="ld-card-top">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                      ${renderModuleBadge(mod, true)}
+                      <span class="ld-badge ld-badge-success">kind = derived (派生摘要 · 只读不接受手改)</span>
+                      <span class="ld-badge">当前派生值：<strong>${hydratedValue !== null && hydratedValue !== undefined ? `${escapeHtml(String(hydratedValue))}${f.unit ? ` ${escapeHtml(f.unit)}` : ''}` : '暂无数据 (null)'}</strong></span>
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      ${
+                        boundMetricId
+                          ? `<button type="button" class="ld-btn ld-btn-sm" data-action="profile-jump-source-metric" data-metric-id="${escapeHtml(boundMetricId)}">
+                              查看来源指标与趋势 →
+                            </button>`
+                          : ''
+                      }
+                      ${
+                        sourceRef?.source_record_ids && sourceRef.source_record_ids.length > 0
+                          ? `<button type="button" class="ld-btn ld-btn-sm" data-action="profile-jump-derived-records" data-field-id="${escapeHtml(f.id)}" data-source-ids="${escapeHtml(sourceRef.source_record_ids.join(','))}" data-field-label="${escapeHtml(f.label)}">
+                              查看派生来源记录 (${sourceRef.source_record_ids.length})
+                            </button>`
+                          : ''
+                      }
+                      <button type="button" class="ld-btn ld-btn-sm ld-btn-danger" data-action="profile-remove-field" data-field-id="${escapeHtml(f.id)}" ${!modEditable ? 'disabled' : ''}>移除字段</button>
+                    </div>
+                  </div>
+                  <div class="ld-form-row">
+                    <label class="ld-field">
+                      <span class="ld-label">所属模块 *</span>
+                      <select class="ld-select" data-pf-prop="module_id" ${!modEditable ? 'disabled' : ''}>
+                        ${data.modules
+                          .filter(m => m.status === 'enabled' || m.id === f.module_id)
+                          .map(
+                            m =>
+                              `<option value="${escapeHtml(m.id)}" ${m.id === f.module_id ? 'selected' : ''}>${escapeHtml(m.name)}</option>`
+                          )
+                          .join('')}
+                      </select>
+                    </label>
+                    <label class="ld-field">
+                      <span class="ld-label">字段 key *</span>
+                      <input class="ld-input" type="text" data-pf-prop="key" value="${escapeHtml(f.key)}" pattern="^[a-z][a-z0-9_]{0,63}$" required ${!modEditable ? 'disabled' : ''} />
+                    </label>
+                    <label class="ld-field">
+                      <span class="ld-label">显示名称 (label) *</span>
+                      <input class="ld-input" type="text" data-pf-prop="label" value="${escapeHtml(f.label)}" maxlength="60" required ${!modEditable ? 'disabled' : ''} />
+                    </label>
+                    <label class="ld-field">
+                      <span class="ld-label">绑定数值指标 (binding.metric_id) *</span>
+                      <select class="ld-select" data-pf-prop="binding_metric_id" ${!modEditable ? 'disabled' : ''}>
+                        ${modMetrics
+                          .map(
+                            mm =>
+                              `<option value="${escapeHtml(mm.id)}" ${mm.id === boundMetricId ? 'selected' : ''}>${escapeHtml(mm.definition.name)} (${escapeHtml(mm.definition.unit)})</option>`
+                          )
+                          .join('')}
+                      </select>
+                    </label>
+                    <label class="ld-field">
+                      <span class="ld-label">单位 (须与指标一致)</span>
+                      <input class="ld-input" type="text" data-pf-prop="unit" value="${escapeHtml(f.unit ?? '')}" maxlength="30" ${!modEditable ? 'disabled' : ''} />
+                    </label>
+                  </div>
+                </div>`;
+              }
 
               let valueInputHtml = '';
               if (f.type === 'boolean') {
@@ -740,7 +961,8 @@ export function renderSettingsProfileSection(state: AppState, data: BootstrapDat
                 valueInputHtml = `<input class="ld-input" type="${inputType}" data-pf-prop="value" value="${escapeHtml(valStr)}" placeholder="${f.type === 'decimal' ? '十进制字符串，如 65.50' : '字段值'}" ${!modEditable ? 'disabled' : ''} />`;
               }
 
-              return `<div class="ld-card" style="padding:12px 14px;" data-profile-field-row="${escapeHtml(f.id)}" data-field-key="${escapeHtml(f.key)}">
+              return `<div class="ld-card" style="padding:12px 14px;" data-profile-field-row="${escapeHtml(f.id)}" data-field-key="${escapeHtml(f.key)}" data-field-kind="profile">
+                <input type="hidden" data-pf-prop="kind" value="profile" />
                 <div class="ld-card-top">
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     ${renderModuleBadge(mod, true)}
@@ -808,6 +1030,7 @@ export function renderSettingsProfileSection(state: AppState, data: BootstrapDat
         </div>`;
 
   return `<div class="ld-card-list" id="ld-profile-settings">
+    ${renderPanelAiContextBar('profile', state, data)}
     ${leaveGuardHtml}
     ${unsavedBarHtml}
     ${renderProfileStatusBar(state)}
@@ -820,7 +1043,7 @@ export function renderSettingsProfileSection(state: AppState, data: BootstrapDat
         <div class="ld-card-top">
           <div>
             <h3 class="ld-card-title">基础身份信息</h3>
-            <p class="ld-panel-subtitle">修改昵称、简介或 IANA 时区通过统一事务与版本控制保存；切换时区不会重写已有历史记录或已完成任务周期。</p>
+            <p class="ld-panel-subtitle">修改昵称、简介或 IANA 时区通过统一事务与版本控制保存；切换时区不会重写已有历史记录或已完成任务周期，也不会重置奖励额度。</p>
           </div>
           <span class="ld-badge">静态头像引用: null（未开放）</span>
         </div>
@@ -857,22 +1080,23 @@ export function renderSettingsProfileSection(state: AppState, data: BootstrapDat
       <div class="ld-card" data-profile-boundary="observation-derived-disabled">
         <div class="ld-card-top">
           <div>
-            <h3 class="ld-card-title">字段性质与统计联动边界（P1-07）</h3>
-            <p class="ld-panel-subtitle">严格区分「资料/配置 (profile)」、「观测字段 (observation)」与「派生摘要 (derived)」，防止直接手改统计数字造成两套矛盾事实。</p>
+            <h3 class="ld-card-title">只读展示区（观测值 observation / 派生值 derived）与来源联动边界</h3>
+            <p class="ld-panel-subtitle">严格区分「资料/配置 (profile)」、「观测字段 (observation)」与「派生摘要 (derived)」，不支持在资料配置表单直接手改覆盖统计值。</p>
           </div>
-          <span class="ld-badge ld-badge-warning">观测与派生改写本阶段不可用</span>
+          <span class="ld-badge ld-badge-warning">观测与派生禁止直接覆盖值</span>
         </div>
         <div class="ld-card-meta" style="flex-direction:column;align-items:flex-start;gap:4px;line-height:1.7;">
-          <div>1. <strong>资料/配置字段 (<code>kind = "profile"</code>)：</strong>本页可编辑并保存（支持四默认模块及自定义模块，支持合法业务名 <code>session</code>），不会伪造实际记录、不会完成任务或发放代币。</div>
-          <div>2. <strong>观测字段 (<code>kind = "observation"</code>) 与派生摘要 (<code>kind = "derived"</code>)：</strong>第一阶段<strong>禁止直接手改</strong>（服务端与前端双重拦截），累计时长、最新观测和成就进度只能通过「记录面板」录入或修正真实来源记录重算。</div>
+          <div>1. <strong>资料/配置字段 (<code>kind = "profile"</code>)：</strong>本页直接编辑并保存（支持四默认模块及自定义模块，支持合法业务名 <code>session</code>），不会伪造实际记录、不会完成任务或发放代币。</div>
+          <div>2. <strong>观测字段 (<code>kind = "observation"</code>)：</strong>绑定同模块记录模板的数值字段（<code>integer / decimal</code>），配置保存时 <code>value = null</code>，不支持在资料页直接手改覆盖；请点击字段卡片上的「＋ 新增发生时间观测」或「纠错最新来源记录」通过统一记录事实核心写入并驱动全站重算。</div>
+          <div>3. <strong>派生摘要 (<code>kind = "derived"</code>)：</strong>绑定同模块数值指标（<code>metric_id</code>），严格<strong>只读</strong>（禁止手改累计结果），点击可跳回来源指标与底层记录。</div>
         </div>
       </div>
 
       <div class="ld-card">
         <div class="ld-card-top">
           <div>
-            <h3 class="ld-card-title">四模块与自定义模块个人资料字段 (${pf.fields.length})</h3>
-            <p class="ld-panel-subtitle">每个启用模块（含自定义模块）均可定义独立资料字段，同模块内 key 唯一</p>
+            <h3 class="ld-card-title">四模块与自定义模块个人资料/观测/派生字段 (${pf.fields.length})</h3>
+            <p class="ld-panel-subtitle">每个启用模块（含自定义模块）均可定义独立字段，同模块内 key 唯一；配置变更与观测写入分开提交，无半成功状态</p>
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             <select class="ld-select" id="ld-profile-add-module-select" style="width:auto;" aria-label="选择新增资料字段所属模块">
@@ -880,7 +1104,12 @@ export function renderSettingsProfileSection(state: AppState, data: BootstrapDat
                 .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`)
                 .join('')}
             </select>
-            <button type="button" class="ld-btn ld-btn-sm ld-btn-primary" data-action="profile-add-field" ${enabledModules.length === 0 ? 'disabled' : ''}>
+            <select class="ld-select" id="ld-profile-add-kind-select" style="width:auto;" aria-label="选择新增字段类别">
+              <option value="profile">资料/配置 (profile)</option>
+              <option value="observation">观测绑定 (observation)</option>
+              <option value="derived">派生只读 (derived)</option>
+            </select>
+            <button type="button" class="ld-btn ld-btn-sm ld-btn-primary" id="ld-profile-add-field-btn" data-action="profile-add-field" ${enabledModules.length === 0 ? 'disabled' : ''}>
               ＋ 新增模块资料字段
             </button>
           </div>

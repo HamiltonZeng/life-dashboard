@@ -105,6 +105,7 @@ export const TASK_STATUS_META: Record<string, { label: string; tone: string }> =
   in_progress: { label: '进行中', tone: 'info' },
   partial: { label: '部分完成', tone: 'warning' },
   completed: { label: '已完成', tone: 'success' },
+  ended: { label: '已结束（未完成）', tone: 'warning' },
   skipped: { label: '已跳过', tone: 'muted' },
   cancelled: { label: '已取消', tone: 'muted' }
 };
@@ -548,3 +549,202 @@ export class StaticAvatarRenderer implements AvatarRendererPort {
 export function createStaticAvatarRenderer(): AvatarRendererPort {
   return new StaticAvatarRenderer();
 }
+
+// ---------------------------------------------------------------------------
+// v0.2 Phase 2: Periodic Tasks, Trends, Milestones, Wallet & AI Action-Proposal
+// ---------------------------------------------------------------------------
+
+export const TASK_CATEGORY_META: Record<
+  'main' | 'daily' | 'weekly' | 'monthly',
+  { label: string; shortLabel: string; rewardAmount: number; quotaLimit: number; quotaWindow: string; description: string }
+> = {
+  main: {
+    label: '主线任务 (main)',
+    shortLabel: '主线任务',
+    rewardAmount: 100,
+    quotaLimit: 1,
+    quotaWindow: '每月最多 1 次',
+    description: '长期目标或里程碑主线，单个实例持续追踪，不支持静默重写已生成快照'
+  },
+  daily: {
+    label: '每日委托 (daily)',
+    shortLabel: '每日委托',
+    rewardAmount: 10,
+    quotaLimit: 3,
+    quotaWindow: '每日最多 3 次',
+    description: '按模板锁定时区自然日生成当期实例，支持跨日补录与 7 天补录奖励窗口'
+  },
+  weekly: {
+    label: '周常委托 (weekly)',
+    shortLabel: '周常委托',
+    rewardAmount: 50,
+    quotaLimit: 3,
+    quotaWindow: '每周最多 3 次',
+    description: '周一 00:00 起算的当周实例，支持次数、不同自然日天数或数值累计验收'
+  },
+  monthly: {
+    label: '月常委托 (monthly)',
+    shortLabel: '月常委托',
+    rewardAmount: 200,
+    quotaLimit: 2,
+    quotaWindow: '每月最多 2 次',
+    description: '自然月 1 日 00:00 起算的当月实例，规则变更自下一周期生效'
+  }
+};
+
+export const TASK_RULE_KIND_META: Record<
+  'linked_exists' | 'linked_field_gte' | 'count' | 'distinct_days' | 'sum',
+  { label: string; description: string }
+> = {
+  linked_exists: {
+    label: '关联记录存在 (linked_exists)',
+    description: '周期内至少有 1 条显式勾选关联本任务实例的已确认记录'
+  },
+  linked_field_gte: {
+    label: '关联记录单条达标 (linked_field_gte)',
+    description: '周期内显式关联本任务实例的记录中，指定数值字段达到门槛'
+  },
+  count: {
+    label: '周期记录次数累计 (count)',
+    description: '周期半开区间内符合模板与筛选条件的已确认记录总条数达到门槛'
+  },
+  distinct_days: {
+    label: '周期不同自然日天数 (distinct_days)',
+    description: '周期半开区间内按锁定时区去重后的有效记录自然日天数达到门槛'
+  },
+  sum: {
+    label: '周期数值字段求和 (sum)',
+    description: '周期半开区间内符合条件的记录指定数值字段精确累加达到门槛'
+  }
+};
+
+export const REWARD_ELIGIBILITY_META: Record<
+  'pending' | 'eligible' | 'quota_full' | 'expired' | 'legacy',
+  { label: string; tone: string; description: string }
+> = {
+  pending: {
+    label: '待完成结算',
+    tone: 'neutral',
+    description: '任务尚未有效完成，首次有效完成时按服务端系统策略与额度结算'
+  },
+  eligible: {
+    label: '有效奖励资格',
+    tone: 'success',
+    description: '已锁定当期奖励名额并发放代币；若撤回或证据失效将冲正，恢复达标沿用原资格'
+  },
+  quota_full: {
+    label: '本期额度已满（不发币）',
+    tone: 'warning',
+    description: '任务正常记为完成，但所属类别当期奖励名额已满，不再发放系统代币'
+  },
+  expired: {
+    label: '超补录窗口（不发币）',
+    tone: 'warning',
+    description: '已超过周期结束后 7 天补录奖励窗口，事实与完成正常统计，不补发系统代币'
+  },
+  legacy: {
+    label: '历史单次任务（不补发）',
+    tone: 'muted',
+    description: 'v0.1/第一阶段单次任务保持原完成语义，不迁移补发第二阶段系统代币'
+  }
+};
+
+export const TREND_RANGE_META: Record<
+  'last_7_days' | 'month' | 'quarter' | 'year',
+  {
+    label: string;
+    shortLabel: string;
+    grains: readonly ('1d' | '2d' | '3d' | '4d' | '5d' | '6d' | '7d' | '14d' | '21d' | '1mo')[];
+    defaultGrain: '1d' | '7d' | '14d';
+  }
+> = {
+  last_7_days: {
+    label: '近七天 (last_7_days)',
+    shortLabel: '近七天',
+    grains: ['1d'],
+    defaultGrain: '1d'
+  },
+  month: {
+    label: '本月 (month)',
+    shortLabel: '本月',
+    grains: ['1d', '2d', '3d'],
+    defaultGrain: '1d'
+  },
+  quarter: {
+    label: '本季度 (quarter)',
+    shortLabel: '本季度',
+    grains: ['3d', '4d', '5d', '6d', '7d'],
+    defaultGrain: '7d'
+  },
+  year: {
+    label: '本年 (year)',
+    shortLabel: '本年',
+    grains: ['7d', '14d', '21d', '1mo'],
+    defaultGrain: '14d'
+  }
+};
+
+export const TREND_FALLBACK_META: Record<
+  'insufficient_samples' | 'zero_variance' | 'too_few_remaining',
+  { label: string; description: string }
+> = {
+  insufficient_samples: {
+    label: '有效样本不足（已回退）',
+    description: '当前时间范围内有效记录天数少于最小样本数要求，未剔除任何点位'
+  },
+  zero_variance: {
+    label: '零方差等值序列（不剔除）',
+    description: '当前范围内所有有效日数值完全相同（方差为 0），保留全部有效点位'
+  },
+  too_few_remaining: {
+    label: '筛选后剩余点不足 2 个（已回退全部点）',
+    description: '应用排除后剩余有效点少于 2 个无法构成趋势对比，已自动回退显示全部有效点'
+  }
+};
+
+export const AI_ACTION_PROPOSAL_META: Record<
+  'home' | 'tasks' | 'metrics' | 'achievements' | 'records' | 'profile',
+  {
+    intent: string;
+    title: string;
+    allowedActions: string[];
+    contextScopeNote: string;
+  }
+> = {
+  home: {
+    intent: 'home.assist',
+    title: '首页统一上下文助手 (action-proposal/1.0)',
+    allowedActions: ['record.create', 'task_template.create', 'metric.explain', 'ask_clarification'],
+    contextScopeNote: '仅按显式授权的当前固定数值、当期任务与个人摘要 ID 构造上下文白名单'
+  },
+  tasks: {
+    intent: 'tasks.propose',
+    title: '任务委托候选与规则建议 (action-proposal/1.0)',
+    allowedActions: ['task_template.create', 'task_template.change', 'ask_clarification'],
+    contextScopeNote: '仅引用当前筛选模块、记录模板与任务模板 ID；禁止输出奖励金额或直接标记完成'
+  },
+  metrics: {
+    intent: 'metrics.analyze',
+    title: '数值趋势解释与指标候选 (action-proposal/1.0)',
+    allowedActions: ['metric.explain', 'metric.propose', 'ask_clarification'],
+    contextScopeNote: '仅引用当前选中数值定义与来源记录 ID；禁止篡改真实日值或统计口径'
+  },
+  achievements: {
+    intent: 'achievements.propose',
+    title: '成就系列与里程碑候选 (action-proposal/1.0)',
+    allowedActions: ['achievement_series.propose', 'ask_clarification'],
+    contextScopeNote: '仅引用当前模块与记录模板 ID；禁止直接输出 unlocked=true 或伪造授予'
+  },
+  records: {
+    intent: 'records.propose',
+    title: '自然语言结构化记录候选 (action-proposal/1.0)',
+    allowedActions: ['record.create', 'ask_clarification'],
+    contextScopeNote: '仅生成待用户确认的 record.create 候选，绝不静默直接写入事实表'
+  },
+  profile: {
+    intent: 'profile.propose',
+    title: '个人资料字段整理候选 (action-proposal/1.0)',
+    allowedActions: ['profile.propose', 'ask_clarification'],
+    contextScopeNote: '仅限显式授权的资料字段 ID；自然语言内容仅作纯数据，绝不作为指令或权限配置执行'
+  }
+};

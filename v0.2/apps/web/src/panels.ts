@@ -8,6 +8,7 @@ import {
   renderErrorBanner,
   renderModuleBadge,
   renderModuleFilterBar,
+  TASK_CATEGORY_META,
   TASK_STATUS_META
 } from '../../../packages/ui/src/index.js';
 import {
@@ -24,6 +25,21 @@ import {
   renderSettingsProfileSection
 } from './home-profile.js';
 import { renderActiveModal } from './modals.js';
+import {
+  computeFallbackAchievementSummary,
+  describePhase2Rule,
+  isTaskOrTemplatePinned,
+  renderAchievementSeriesList,
+  renderAchievementSummaryBar,
+  renderColorSwatchBadge,
+  renderMetricTrendSection,
+  renderPanelAiContextBar,
+  renderTaskRewardPill,
+  renderTasksCombinationFilterBar,
+  renderTaskTemplateSection,
+  renderWalletLedgerSection,
+  renderWalletSummaryCard
+} from './phase2-views.js';
 import type { AppState } from './state.js';
 import {
   loadAllPendingConfigMutations,
@@ -42,15 +58,25 @@ import type {
 
 export {
   buildFallbackHomeFromBootstrap,
+  computeFallbackAchievementSummary,
   describeAiProvider,
+  describePhase2Rule,
+  renderAchievementSeriesList,
+  renderAchievementSummaryBar,
   renderActiveModal,
   renderAiGenerateModal,
   renderAiResultModal,
   renderDisabledAiContainer,
   renderHomePanel,
+  renderMetricTrendSection,
+  renderPanelAiContextBar,
   renderProfileStatusBar,
   renderSettingsAiSection,
-  renderSettingsProfileSection
+  renderSettingsProfileSection,
+  renderTasksCombinationFilterBar,
+  renderTaskTemplateSection,
+  renderWalletLedgerSection,
+  renderWalletSummaryCard
 };
 
 export function formatDateTime(iso: string | null | undefined): string {
@@ -170,22 +196,50 @@ function renderReturnBanner(state: AppState): string {
 }
 
 export function renderTasksPanel(state: AppState, data: BootstrapData): string {
-  const aiEnabled=state.capabilities?.ai_generation===true;
+  const aiEnabled = state.capabilities?.ai_generation === true;
   const p = state.panels.tasks;
+  const tf = state.taskFilter;
+
+  // Merge rich Phase 2 instances (state.taskInstances) with bootstrap tasks so both work seamlessly
+  const richById = new Map(state.taskInstances.map(t => [t.id, t]));
+  const allTasks: TaskRow[] = [
+    ...data.tasks.map(t => richById.get(t.id) ?? t),
+    ...state.taskInstances.filter(t => !data.tasks.some(bt => bt.id === t.id))
+  ];
+
   const countsByModule: Record<string, number> = {};
   for (const m of data.modules) countsByModule[m.id] = 0;
-  for (const t of data.tasks) {
+  for (const t of allTasks) {
     countsByModule[t.module_id] = (countsByModule[t.module_id] ?? 0) + 1;
   }
 
   const today = getTodayIsoDate();
-  const filtered = data.tasks.filter(t => {
+  const filtered = allTasks.filter(t => {
     if (p.moduleId && t.module_id !== p.moduleId) return false;
+    // Combination filter bar checks
+    if (tf.category !== 'all' && (t.category ?? 'main') !== tf.category) return false;
+    if (tf.color !== 'all' && (t.color ?? 'blue').toLowerCase() !== tf.color.toLowerCase()) {
+      return false;
+    }
+    if (tf.pinnedOnly && !isTaskOrTemplatePinned(state, t).isPinned) {
+      return false;
+    }
+    if (tf.status !== 'all') {
+      if (tf.status === 'open') {
+        if (t.status !== 'pending' && t.status !== 'partial' && t.status !== 'in_progress') return false;
+      } else if (tf.status === 'needs_review') {
+        if (!t.needs_review) return false;
+      } else if (t.status !== tf.status) {
+        return false;
+      }
+    }
+    // Subtab checks
     if (p.subTab === 'today') {
       return !t.definition.business_date || t.definition.business_date === today;
     }
     if (p.subTab === 'completed') return t.status === 'completed';
     if (p.subTab === 'partial') return t.status === 'partial';
+    if (p.subTab === 'ended') return t.status === 'ended';
     if (p.subTab === 'needs_review') return t.needs_review;
     return true;
   });
@@ -194,11 +248,11 @@ export function renderTasksPanel(state: AppState, data: BootstrapData): string {
     ? renderEmptyState({
         icon: 'flag',
         title: p.moduleId ? '当前模块下暂无任务' : '暂无任务实例',
-        description: '你可以手动创建手动完成、记录可选或必须关联记录的任务实例，体验「任务 → 记录 → 数值 → 成就」真实写库闭环。',
-        primaryActionLabel: '＋ 新建任务',
-        primaryActionData: 'data-action="open-create-task"',
-        secondaryActionLabel: aiEnabled?'✦ AI 生成配置':undefined,
-        secondaryActionData: 'data-action="open-ai-modal"'
+        description: '你可以创建周期任务模板（主线/每日/周常/月常）或单次任务实例，体验「任务 → 记录 → 数值 → 成就 → 系统代币奖励」真实写库闭环。',
+        primaryActionLabel: '＋ 新建周期/主线模板',
+        primaryActionData: 'data-action="open-create-task-template"',
+        secondaryActionLabel: aiEnabled ? '✦ AI 生成配置' : '＋ 新建单次任务',
+        secondaryActionData: aiEnabled ? 'data-action="open-ai-modal"' : 'data-action="open-create-task"'
       })
     : `<div class="ld-card-list">
         ${filtered
@@ -214,10 +268,15 @@ export function renderTasksPanel(state: AppState, data: BootstrapData): string {
             const linkedRecords = data.records.filter(r => r.task_ids.includes(t.id));
             const isSelected = p.selectedId === t.id;
             const isClosedTask = t.status === 'cancelled' || t.status === 'skipped';
+            const catMeta = t.category ? TASK_CATEGORY_META[t.category] : undefined;
+            const pinState = isTaskOrTemplatePinned(state, t);
+            const canRevokeManual =
+              t.status === 'completed' && t.completion_origin === 'manual';
+
             const statusBadgeClass =
               t.status === 'completed'
                 ? 'ld-badge-success'
-                : t.status === 'partial'
+                : t.status === 'partial' || t.status === 'ended'
                   ? 'ld-badge-warning'
                   : isClosedTask
                     ? ''
@@ -241,13 +300,16 @@ export function renderTasksPanel(state: AppState, data: BootstrapData): string {
               }
             }
 
-            return `<article class="ld-card ${isSelected ? 'is-selected' : ''} ${t.needs_review ? 'is-needs-review' : ''}" data-task-card="${escapeHtml(t.id)}" data-task-status="${escapeHtml(t.status)}">
+            return `<article class="ld-card ${isSelected ? 'is-selected' : ''} ${t.needs_review ? 'is-needs-review' : ''}" data-task-card="${escapeHtml(t.id)}" data-task-status="${escapeHtml(t.status)}" data-task-category="${escapeHtml(t.category ?? 'main')}">
               <div class="ld-card-top">
                 <div style="display:flex;flex-direction:column;gap:6px;">
                   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     ${renderModuleBadge(mod, true)}
+                    ${catMeta ? `<span class="ld-badge ld-badge-info">${escapeHtml(catMeta.shortLabel)}</span>` : ''}
+                    ${t.color ? renderColorSwatchBadge(t.color) : ''}
                     <span class="ld-badge">${escapeHtml(modeMeta.label)}</span>
-                    <span class="ld-badge">${t.definition.business_date ? `计划日期: ${escapeHtml(t.definition.business_date)}` : '不限日期'}</span>
+                    <span class="ld-badge">${t.period ? `周期: ${escapeHtml(t.period.start.slice(0, 10))}${t.period.end ? ` ~ ${escapeHtml(t.period.end.slice(0, 10))}` : ''} (${escapeHtml(t.period.timezone)})` : t.definition.business_date ? `计划日期: ${escapeHtml(t.definition.business_date)}` : '不限日期'}</span>
+                    ${pinState.isPinned ? '<span class="ld-badge ld-badge-success">📌 已固定首页</span>' : ''}
                   </div>
                   <h3 class="ld-card-title">${escapeHtml(t.definition.title)}</h3>
                 </div>
@@ -256,19 +318,40 @@ export function renderTasksPanel(state: AppState, data: BootstrapData): string {
                   <span class="ld-badge ${statusBadgeClass}">${escapeHtml(statusMeta.label)}</span>
                 </div>
               </div>
-              <div class="ld-card-meta">
-                <span><strong>验收要求：</strong>${escapeHtml(describeTaskAcceptance(data, t))}</span>
+              <div class="ld-card-meta" style="justify-content:space-between;flex-wrap:wrap;">
+                <span><strong>验收要求：</strong>${escapeHtml(t.locked_rule ? describePhase2Rule(data, t.locked_rule) : describeTaskAcceptance(data, t))}</span>
+                ${
+                  t.progress && t.progress.target
+                    ? `<span>当前进度：<strong>${escapeHtml(String(t.progress.value ?? '0'))} / ${escapeHtml(t.progress.target)}</strong>（有效记录 ${t.progress.source_record_ids.length} 条 · ${t.progress.distinct_dates.length} 个自然日）</span>`
+                    : ''
+                }
               </div>
+              ${t.reward_summary ? renderTaskRewardPill(t.reward_summary, t.category) : ''}
               ${partialReason ? `<div class="ld-badge ld-badge-warning" style="align-self:flex-start;padding:5px 10px;">${escapeHtml(partialReason)}</div>` : ''}
               <div class="ld-card-footer">
                 <div class="ld-card-meta">
                   <span>已关联记录：<strong>${linkedRecords.length}</strong> 条</span>
                   ${t.completed_at ? `<span>· 完成于 ${escapeHtml(formatDateTime(t.completed_at))} (${t.completion_origin === 'manual' ? '手动确认' : '记录达标'})</span>` : ''}
+                  ${t.status === 'ended' ? `<span>· 本周期已结束未完成（周期结束后 7 天内补录仍可获资格，超期补录仅计事实不发币）</span>` : ''}
                   ${isClosedTask ? `<span>· 已关闭状态（不可再完成）</span>` : ''}
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                   ${primaryButtons}
-                  ${!isClosedTask ? `<button type="button" class="ld-btn ld-btn-sm" data-action="home-toggle-pin-task" data-task-id="${escapeHtml(t.id)}">${(state.homePreferences?.pinned_task_ids ?? []).includes(t.id) ? '取消首页固定' : '📌 固定首页'}</button>` : ''}
+                  ${
+                    canRevokeManual
+                      ? `<button type="button" class="ld-btn ld-btn-sm ld-btn-warning" data-action="open-revoke-task" data-task-id="${escapeHtml(t.id)}">撤回手动完成</button>`
+                      : ''
+                  }
+                  ${
+                    !isClosedTask && t.period
+                      ? `<button type="button" class="ld-btn ld-btn-sm ld-btn-danger" data-action="open-cancel-task" data-task-id="${escapeHtml(t.id)}">取消实例</button>`
+                      : ''
+                  }
+                  ${
+                    !isClosedTask
+                      ? `<button type="button" class="ld-btn ld-btn-sm" data-action="${pinState.pinKind === 'template' ? 'task-toggle-typed-pin' : 'home-toggle-pin-task'}" data-pin-kind="${pinState.pinKind}" data-pin-id="${escapeHtml(pinState.pinId)}" data-task-id="${escapeHtml(t.id)}">${pinState.isPinned ? '取消首页固定' : '📌 固定首页'}</button>`
+                      : ''
+                  }
                   <button type="button" class="ld-btn ld-btn-sm" data-action="open-task-detail" data-task-id="${escapeHtml(t.id)}">查看详情</button>
                 </div>
               </div>
@@ -283,22 +366,27 @@ export function renderTasksPanel(state: AppState, data: BootstrapData): string {
     <header class="ld-panel-header">
       <div class="ld-panel-title-group">
         <h1 class="ld-panel-title">任务面板</h1>
-        <p class="ld-panel-subtitle">管理各模块待办事项，支持手动完成、记录可选与必须关联真实记录三种验收方式</p>
+        <p class="ld-panel-subtitle">支持主线任务、每日委托、周常委托与月常委托，以及周期累计验收、组合筛选与系统代币规则奖励</p>
       </div>
       <div class="ld-panel-actions">
-        ${aiEnabled?'<button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="tasks">✦ AI 生成</button>':''}
-        <button type="button" class="ld-btn ld-btn-primary" data-action="open-create-task">＋ 新建任务</button>
+        ${aiEnabled ? '<button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="tasks">✦ AI 生成</button>' : ''}
+        <button type="button" class="ld-btn" data-action="open-create-task">＋ 新建单次任务</button>
+        <button type="button" class="ld-btn ld-btn-primary" data-action="open-create-task-template">＋ 新建周期/主线模板</button>
       </div>
     </header>
+    ${renderPanelAiContextBar('tasks', state, data)}
     ${renderModuleFilterBar(data.modules, p.moduleId, countsByModule, state.showInactiveModulesInFilter)}
+    ${renderTasksCombinationFilterBar(state, data)}
+    ${renderTaskTemplateSection(state, data)}
     <div class="ld-subfilter-bar">
       <div class="ld-tab-group" role="tablist" aria-label="任务范围筛选">
         ${[
-          { key: 'all', label: `全部 (${data.tasks.length})` },
+          { key: 'all', label: `全部 (${allTasks.length})` },
           { key: 'today', label: '今日 / 不限期' },
           { key: 'partial', label: '部分完成' },
           { key: 'completed', label: '已完成' },
-          { key: 'needs_review', label: `待复核 (${data.tasks.filter(x => x.needs_review).length})` }
+          { key: 'ended', label: '已结束未完成' },
+          { key: 'needs_review', label: `待复核 (${allTasks.filter(x => x.needs_review).length})` }
         ]
           .map(
             tab =>
@@ -480,13 +568,14 @@ export function renderRecordsPanel(state: AppState, data: BootstrapData): string
         </select>
       </div>
     </div>
+    ${renderPanelAiContextBar('records', state, data)}
     ${renderDisabledAiContainer('records', state)}
     ${bodyHtml}
   </div>`;
 }
 
 export function renderMetricsPanel(state: AppState, data: BootstrapData): string {
-  const aiEnabled=state.capabilities?.ai_generation===true;
+  const aiEnabled = state.capabilities?.ai_generation === true;
   const p = state.panels.metrics;
   const countsByModule: Record<string, number> = {};
   for (const m of data.modules) countsByModule[m.id] = 0;
@@ -507,7 +596,7 @@ export function renderMetricsPanel(state: AppState, data: BootstrapData): string
         description: '支持对指定记录模板进行 count（计数）、sum（求和）、avg（均值）、latest（最新值）精确聚合，无数据时如实显示「暂无数据」而非 0。',
         primaryActionLabel: '＋ 新建数值定义',
         primaryActionData: 'data-action="open-create-metric"',
-        secondaryActionLabel: aiEnabled?'✦ AI 生成配置':undefined,
+        secondaryActionLabel: aiEnabled ? '✦ AI 生成配置' : undefined,
         secondaryActionData: 'data-action="open-ai-modal"'
       })
     : `<div class="ld-card-grid">
@@ -549,6 +638,7 @@ export function renderMetricsPanel(state: AppState, data: BootstrapData): string
               <div class="ld-card-meta">
                 <span>来源模板：<strong>${escapeHtml(tpl?.name ?? '未知模板')}</strong>${field ? ` · 字段「${escapeHtml(field.label)}」` : ' · 唯一记录计数'}</span>
               </div>
+              ${renderMetricTrendSection(m.id, state, data)}
               <div class="ld-card-footer">
                 <button type="button" class="ld-btn ld-btn-sm" data-action="metric-view-sources" data-metric-id="${escapeHtml(m.id)}">
                   查看来源记录 (${m.computed.source_record_ids.length})
@@ -570,13 +660,14 @@ export function renderMetricsPanel(state: AppState, data: BootstrapData): string
     <header class="ld-panel-header">
       <div class="ld-panel-title-group">
         <h1 class="ld-panel-title">数值面板</h1>
-        <p class="ld-panel-subtitle">基于已确认唯一记录与十进制精确运算，展示日 / 周 / 月 / 累计统计窗口</p>
+        <p class="ld-panel-subtitle">基于已确认唯一记录与十进制精确运算，展示日 / 周 / 月 / 累计统计窗口及四范围等权日均趋势图</p>
       </div>
       <div class="ld-panel-actions">
-        ${aiEnabled?'<button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="metrics">✦ AI 生成</button>':''}
+        ${aiEnabled ? '<button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="metrics">✦ AI 生成</button>' : ''}
         <button type="button" class="ld-btn ld-btn-primary" data-action="open-create-metric">＋ 新建数值定义</button>
       </div>
     </header>
+    ${renderPanelAiContextBar('metrics', state, data)}
     ${renderModuleFilterBar(data.modules, p.moduleId, countsByModule, state.showInactiveModulesInFilter)}
     <div class="ld-subfilter-bar">
       <div class="ld-tab-group" role="tablist" aria-label="时间窗口筛选">
@@ -599,12 +690,15 @@ export function renderMetricsPanel(state: AppState, data: BootstrapData): string
 }
 
 export function renderAchievementsPanel(state: AppState, data: BootstrapData): string {
-  const aiEnabled=state.capabilities?.ai_generation===true;
+  const aiEnabled = state.capabilities?.ai_generation === true;
   const p = state.panels.achievements;
   const countsByModule: Record<string, number> = {};
   for (const m of data.modules) countsByModule[m.id] = 0;
   for (const a of data.achievement_definitions) {
     countsByModule[a.module_id] = (countsByModule[a.module_id] ?? 0) + 1;
+  }
+  for (const s of state.achievementSeries) {
+    countsByModule[s.module_id] = (countsByModule[s.module_id] ?? 0) + 1;
   }
 
   const filtered = data.achievement_definitions.filter(a => {
@@ -620,11 +714,11 @@ export function renderAchievementsPanel(state: AppState, data: BootstrapData): s
     ? renderEmptyState({
         icon: 'trophy',
         title: '暂无成就定义',
-        description: '成就不由 AI 直接标记完成，而是绑定某个数值定义与门槛，在真实记录达标时由规则引擎自动授予。',
+        description: '成就不由 AI 直接标记完成，而是绑定某个数值定义或系列多门槛，在真实记录达标时由规则引擎自动授予。',
         primaryActionLabel: '＋ 新建成就定义',
         primaryActionData: 'data-action="open-create-achievement"',
-        secondaryActionLabel: aiEnabled?'✦ AI 生成配置':undefined,
-        secondaryActionData: 'data-action="open-ai-modal"'
+        secondaryActionLabel: aiEnabled ? '✦ AI 生成配置' : '＋ 新建多门槛成就系列',
+        secondaryActionData: aiEnabled ? 'data-action="open-ai-modal"' : 'data-action="open-create-achievement-series"'
       })
     : `<div class="ld-card-grid">
         ${filtered
@@ -701,27 +795,32 @@ export function renderAchievementsPanel(state: AppState, data: BootstrapData): s
           .join('')}
       </div>`;
 
+  const summary = computeFallbackAchievementSummary(state, data);
+
   return `<div class="ld-panel-container">
     ${renderReturnBanner(state)}
     ${state.error ? renderErrorBanner({ ...state.error, retryAction: 'refresh-bootstrap' }) : ''}
     <header class="ld-panel-header">
       <div class="ld-panel-title-group">
         <h1 class="ld-panel-title">成就面板</h1>
-        <p class="ld-panel-subtitle">定义与授予分离，由真实记录驱动解锁；当唯一完成证据被修改或删除时自动标记「待复核」</p>
+        <p class="ld-panel-subtitle">支持多门槛成就系列与单门槛成就定义；严格区分有效授予总数 (${summary.effective_awards_count})、已达成系列数 (${summary.achieved_series_count}) 与待复核数 (${summary.needs_review_count})</p>
       </div>
       <div class="ld-panel-actions">
-        ${aiEnabled?'<button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="achievements">✦ AI 生成</button>':''}
-        <button type="button" class="ld-btn ld-btn-primary" data-action="open-create-achievement">＋ 新建成就定义</button>
+        ${aiEnabled ? '<button type="button" class="ld-btn" data-action="open-ai-modal" data-ai-source-panel="achievements">✦ AI 生成</button>' : ''}
+        <button type="button" class="ld-btn" data-action="open-create-achievement">＋ 新建单门槛成就</button>
+        <button type="button" class="ld-btn ld-btn-primary" data-action="open-create-achievement-series">＋ 新建多门槛系列</button>
       </div>
     </header>
+    ${renderPanelAiContextBar('achievements', state, data)}
+    ${renderAchievementSummaryBar(state, data)}
     ${renderModuleFilterBar(data.modules, p.moduleId, countsByModule, state.showInactiveModulesInFilter)}
     <div class="ld-subfilter-bar">
       <div class="ld-tab-group" role="tablist" aria-label="成就状态筛选">
         ${[
-          { key: 'all', label: `全部 (${data.achievement_definitions.length})` },
-          { key: 'unlocked', label: `已解锁 (${data.achievement_awards.filter(x => x.state === 'unlocked').length})` },
+          { key: 'all', label: `全部 (${data.achievement_definitions.length + state.achievementSeries.length})` },
+          { key: 'unlocked', label: `有效授予 (${summary.effective_awards_count})` },
           { key: 'unstarted', label: '未解锁 / 进行中' },
-          { key: 'needs_review', label: `需复核 (${data.achievement_awards.filter(x => x.state === 'needs_review').length})` }
+          { key: 'needs_review', label: `需复核 (${summary.needs_review_count})` }
         ]
           .map(
             t =>
@@ -730,6 +829,7 @@ export function renderAchievementsPanel(state: AppState, data: BootstrapData): s
           .join('')}
       </div>
     </div>
+    ${renderAchievementSeriesList(state, data)}
     ${gridHtml}
   </div>`;
 }
@@ -744,6 +844,11 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
   let sectionHtml = '';
   if (subTab === 'profile') {
     sectionHtml = renderSettingsProfileSection(state, data);
+  } else if (subTab === 'wallet') {
+    sectionHtml = `<div class="ld-card-list">
+      ${renderWalletSummaryCard(state, false)}
+      ${renderWalletLedgerSection(state, data)}
+    </div>`;
   } else if (subTab === 'modules') {
     sectionHtml = `<div class="ld-card-list">
       <div class="ld-card" style="flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap;">
@@ -950,6 +1055,7 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
       '尚未导出。导出文件是服务端返回的完整 JSON 快照（含 format / schema_version / checksum），可直接作为 CLI 恢复的输入；浏览器不会保存任何登录口令。';
 
     sectionHtml = `<div class="ld-card-list">
+      ${renderWalletSummaryCard(state, false)}
       <div class="ld-card">
         <div class="ld-card-top">
           <div>
@@ -1008,7 +1114,7 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
           </div>
           <div class="ld-field">
             <span class="ld-label">契约版本 / 阶段</span>
-            <div><code>${escapeHtml(state.capabilities?.contract_version ?? '0.2.0')}</code> / <code>${escapeHtml(state.capabilities?.stage ?? 'T2/T3-ai')}</code></div>
+            <div><code>${escapeHtml(state.capabilities?.contract_version ?? '0.2.0')}</code> / <code>${escapeHtml(state.capabilities?.stage ?? 'v0.2-phase2')}</code></div>
           </div>
         </div>
         <div class="ld-card-footer">
@@ -1030,7 +1136,7 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
     <header class="ld-panel-header">
       <div class="ld-panel-title-group">
         <h1 class="ld-panel-title">设置面板</h1>
-        <p class="ld-panel-subtitle">管理模块、记录模板、内容依赖、显示偏好与本地账户会话</p>
+        <p class="ld-panel-subtitle">管理个人资料与观测绑定、代币钱包、模块、记录模板、内容依赖、显示偏好与本地账户会话</p>
       </div>
     </header>
     ${
@@ -1048,13 +1154,14 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
       <div class="ld-tab-group" role="tablist" aria-label="设置分组">
         ${[
           { key: 'profile', label: '个人信息详情' },
+          { key: 'wallet', label: '🪙 代币钱包与流水' },
           { key: 'modules', label: '模块管理' },
           { key: 'dependencies', label: '内容配置与依赖' },
           { key: 'ai', label: 'AI 设置与自动填充' },
           { key: 'display', label: '显示与反馈' },
           { key: 'account', label: '账户与数据' }
         ]
-          .filter(t=>t.key!=='ai'||aiEnabled)
+          .filter(t => t.key !== 'ai' || aiEnabled)
           .map(
             t =>
               `<button type="button" class="ld-tab-btn ${subTab === t.key ? 'is-active' : ''}" data-action="panel-subtab" data-subtab="${t.key}">${escapeHtml(t.label)}</button>`

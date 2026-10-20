@@ -1445,7 +1445,7 @@ export async function runAllWebVerificationTests(): Promise<TestCaseResult[]> {
     assert(profHtml.includes('id="ld-profile-leave-confirm"'), 'Renders unsaved changes leave confirmation banner', c);
     assert(profHtml.includes('data-action="profile-stay"') && profHtml.includes('data-action="profile-discard-and-leave"'), 'Renders stay and discard-and-leave actions', c);
     assert(profHtml.includes('data-profile-boundary="observation-derived-disabled"'), 'Renders read-only observation/derived boundary card', c);
-    assert(profHtml.includes('观测与派生改写本阶段不可用') && profHtml.includes('禁止直接手改'), 'Explains observation and derived fields cannot be directly overwritten', c);
+    assert(profHtml.includes('观测与派生禁止直接覆盖值') && profHtml.includes('统一记录事实核心'), 'Explains observation and derived fields cannot be directly overwritten', c);
 
     // Simulate 409 VERSION_CONFLICT with server v3 baseline
     state.profileForm.submissionStatus = 'conflict_pending';
