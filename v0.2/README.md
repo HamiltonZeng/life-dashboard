@@ -1,36 +1,43 @@
-# 人生面板 v0.2 开发工作区
+# 人生面板 v0.2 · 0.2.0-rc.1
 
-当前为从 v0.1 原样迁入的运行基线，**v0.2 新业务功能尚未开发**。默认仍是已有手动 MVP、空白首页和禁用 AI；页面内旧版本标识留待第一阶段业务实现统一处理。
+本机 Docker、单用户工具。记录是事实来源：确认记录会重算任务、数值、成就和奖励；编辑或删除依据后保留历史并更新复核状态。
 
-## 已准备
+| 面板 | 本版能力 |
+| --- | --- |
+| 首页 | 今日每日任务、有效固定任务（最多 5 项）、两张固定趋势、成就摘要、真实钱包、极简模式 |
+| 个人资料 | 通用资料字段；观测写入来源记录；派生字段只读；绑定变更需重新确认 |
+| 任务 | 主线/每日/周常/月常、当期按需生成、规则快照、手动撤回/取消、奖励资格与冲正 |
+| 数值 | 日序列、自然月份、聚合粒度、零与缺失分离、视图排除与来源核查 |
+| 成就 | 分级里程碑、历史依据、撤销复核与恢复原身份 |
+| 记录/设置 | 模板、确认/草稿、修订/软删除、自定义模块、导出及空库恢复 |
 
-- 源码、node_modules、缓存、私有配置及数据库移到本目录，未重新安装依赖。
-- Compose 项目改为 `life-dashboard-v0-2`，隔离发布项目为 `life-dashboard-v0-2-release`。
-- 主入口 `http://localhost:18080`；原 v0.1 容器已停止并保留。
-- v0.1 文档保留在 [历史目录](../v0.1/)，开发日志继续保留在根 `log/`。
+未开放：真实 AI、3D/兑换、同步、专业健康/财务功能。旧蓝图与适配器保留供后续版本使用，默认不会调用模型。
 
-## 不安装依赖的启动与停止
+## 已有本机环境
+
+主工作区 `v0.2` 下运行 `sh scripts/start-existing.sh` 复用依赖和私有配置，执行增量迁移后启动 18080。**本轮没有执行主环境切换**；操作前按[升级清单](docs/v02-phase3/README.md)备份并验证恢复。不要把预览库覆盖到主库。
+
+Codex 候选仍位于 `v0.2/.runtime/worktrees/codex/v0.2`，由主工作区的 `sh scripts/agents/compose.sh codex …` 管理，预览端口 18181。验收用独立合成数据库和无外部端口的测试服务。
+
+## 新目录离线试运行
+
+Docker 已启动，四个固定镜像和依赖已存在。以下命令以新克隆目录中的 `v0.2` 为工作目录：
 
 ```sh
-cd /Users/zhk/life_dashboard/v0.2
-sh scripts/start-existing.sh
-docker compose stop
+export LIFE_DASHBOARD_DEPENDENCIES=/absolute/path/to/existing/v0.2
+# 仅新目录第一次创建本机私有配置；已有文件会保留。生成结果不入 Git。
+docker run --rm --pull never --network none -v "$PWD:/workspace" -w /workspace node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 node scripts/init.mjs
+sh scripts/release/start-existing.sh
+# http://localhost:18184 ; 口令在该目录 .secrets/development.env 的 LOCAL_LOGIN_SECRET
+sh scripts/release/compose-existing.sh stop
 ```
 
-该脚本只使用本地镜像与现有依赖，执行迁移/无事实种子并启动服务；缺少依赖或已有私有配置会退出，不重新生成口令。保留的旧 `scripts/start.sh` 是初次安装流程，本次复用环境不必调用。
+该便携入口固定使用独立项目 `life-dashboard-v0-2-release`，不依赖原作者绝对路径，不安装依赖、不拉镜像。首次全新联网安装可用 `scripts/start.sh`，本轮未测试下载路径。
 
-## 并行开发
+## 验收与数据
 
-先读 [第一阶段规划](../design/v0.2/第一阶段开发规划.md) 和 [接口契约](../design/v0.2/第一阶段接口契约.md)。三个独立工作树位于 `.runtime/worktrees/{codex,gemini,deepseek}`，只读共享依赖，单独使用数据库/密钥/端口。
+Codex 工作树内执行 `sh tests/v02-phase3/run.sh`，所有工具在容器中运行。旧 phase1/phase2 入口转入此入口，20+15 浏览器场景共用一份源文件；不得同时跑多个会重置合成库的验收。详见[结果与限制](docs/v02-phase3/README.md)。
 
-在本目录用 `sh scripts/agents/start.sh <agent>` 启动自己的环境。不要在工作树内裸用 Compose；所有操作走 `scripts/agents/compose.sh <agent> ...`，避免控制到主集成环境。
+私有目录 `.secrets`、`.runtime`、依赖、数据库、dump 和个人导出均不入 Git。JSON 导出保存事实、配置、修订、回执、奖励链；恢复要求对应迁移和空目标。迁移 0001–0004 原样保留。协议增加观测绑定指纹，无新增表结构或备份格式迁移。
 
-依赖只在容器内挂载到 `/workspace/node_modules`，不要求工作树宿主目录再装一份。只读共享树禁止安装器修改；如确需依赖变更由集成负责人处理，本阶段默认不新增依赖。
-
-## 数据与归档
-
-`.runtime/data/postgres` 是当前唯一主数据库物理目录，不是缓存。迁移前备份 `.runtime/migration-v02/v0.1-before-move.dump` 权限 600，内含个人数据；同目录保存源码/依赖哈希、数据指纹、原 Compose 及容器元数据，不入 Git。
-
-旧 v0.1 容器的绑定路径已经迁出，不要直接 Restart 旧项目；回退见 [v0.1 环境归档说明](../v0.1/ENVIRONMENT_ARCHIVE.md)。不能同时用两个 PostgreSQL 进程打开同一物理数据目录。
-
-个人信息、极简模式和新 homepage API 按任务卡开发；周期/趋势/里程碑/代币后续逐阶段接入。真实 AI、3D 和兑换继续只预留接口。
+v0.1 容器继续停止保留；旧物理路径已迁移，回滚前读 [ENVIRONMENT_ARCHIVE](../v0.1/ENVIRONMENT_ARCHIVE.md)，禁止两个 PostgreSQL 进程同时打开同一数据目录。

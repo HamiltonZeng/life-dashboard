@@ -36,5 +36,5 @@ export async function submitObservation(form:HTMLFormElement,ctx:Phase2EventCont
         renderModalRegionOnly(true);
       }finally{state.submittingModal=false;renderModalRegionOnly(true);}
       return;
-    
+
 }
