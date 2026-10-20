@@ -548,4 +548,3 @@ export class StaticAvatarRenderer implements AvatarRendererPort {
 export function createStaticAvatarRenderer(): AvatarRendererPort {
   return new StaticAvatarRenderer();
 }
-

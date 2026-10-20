@@ -379,7 +379,7 @@ function prepareConfigFormModal(
   state.configForm = {
     draftKey,
     kind,
-    submissionStatus: pendingOp ? 'unknown_network' : savedDraft ? 'saved_local' : 'idle',
+    submissionStatus: pendingOp ? 'unknown_network' : savedDraft?.confirmedEntityId ? 'confirmed_server' : savedDraft ? 'saved_local' : 'idle',
     operationId: pendingOp ? pendingOp.operationId : null,
     entityId: pendingOp?.entityId ?? savedDraft?.entityId ?? generateUuid(),
     restoredFromStorage: Boolean(savedDraft || pendingOp),
@@ -962,6 +962,27 @@ async function initializeApp(): Promise<void> {
   }
 }
 
+function buildProfilePayload(pf:AppState['profileForm']):ProfileInput {
+  return {
+        base_version: pf.baseVersion,
+        nickname: pf.nickname.trim(),
+        bio: pf.bioIsNull ? null : pf.bio,
+        timezone: pf.timezone.trim(),
+        field_upserts: pf.fields.filter(f=>state.bootstrap?.modules.some(m=>m.id===f.module_id && m.status==='enabled')).map(f => ({
+          id: f.id,
+          module_id: f.module_id,
+          key: f.key,
+          label: f.label,
+          type: f.type,
+          kind: 'profile' as const,
+          value: f.value,
+          unit: f.unit,
+          options: f.options ?? []
+        })),
+        field_remove_ids: pf.removeIds
+      };
+}
+
 async function updateHomePreferencesReliably(
   patch: Omit<HomePreferencesInput, 'base_version'>,
   summary: string
@@ -983,7 +1004,7 @@ async function updateHomePreferencesReliably(
     allocateUuid: generateUuid
   });
 
-  savePendingConfigMutation({
+  if(!savePendingConfigMutation({
     draftKey,
     kind: 'home-preferences',
     operationId: prepared.operationId,
@@ -992,7 +1013,10 @@ async function updateHomePreferencesReliably(
     frozenPayload: prepared.payload,
     lastError: { code: 'AWAITING_RECEIPT', message: '等待服务器确认' },
     savedAt: new Date().toISOString()
-  });
+  })) {
+    pushToast('未保存本机',getStorageIssue()??'首页偏好尚未发送，请恢复本机存储后重试','warning');
+    return;
+  }
 
   try {
     const updated = await api.updateHomePreferences(prepared.payload, prepared.operationId);
@@ -1333,6 +1357,12 @@ function setupEventDelegation(): void {
       return;
     }
 
+    if(action==='copy-config-draft'){
+      const form=document.querySelector<HTMLFormElement>('form[data-config-kind]');
+      const draft=form?extractConfigFormDraft(form,state):null;
+      if(draft)try{await navigator.clipboard.writeText(JSON.stringify(draft.rawInputs,null,2));pushToast('已复制当前输入','上次配置已确认，当前修改尚未提交','info');}catch{pushToast('请手动复制输入','本机草稿仍保留，可直接选择表单内容复制','warning');}
+      return;
+    }
     if (action === 'resume-pending-config') {
       const kind = (target.getAttribute('data-config-kind') ?? '') as ConfigMutationKind;
       if (kind === 'profile') {
@@ -2362,24 +2392,7 @@ function setupEventDelegation(): void {
       extractProfileFormToState(form, state);
       const pf = state.profileForm;
       const draftKey = buildConfigDraftKey('profile');
-      const candidatePayload: ProfileInput = {
-        base_version: pf.baseVersion,
-        nickname: pf.nickname.trim(),
-        bio: pf.bioIsNull ? null : pf.bio,
-        timezone: pf.timezone.trim(),
-        field_upserts: pf.fields.map(f => ({
-          id: f.id,
-          module_id: f.module_id,
-          key: f.key,
-          label: f.label,
-          type: f.type,
-          kind: 'profile' as const,
-          value: f.value,
-          unit: f.unit,
-          options: f.options ?? []
-        })),
-        field_remove_ids: pf.removeIds
-      };
+      const candidatePayload=buildProfilePayload(pf);
 
       const sig = computeConfigPayloadSignature('profile', candidatePayload);
       const prepared = prepareConfigMutationEnvelope({
@@ -2423,22 +2436,35 @@ function setupEventDelegation(): void {
       try {
         const updatedProfile = await api.updateProfile(prepared.payload, prepared.operationId);
         state.submittingModal = false;
+        const liveForm=document.getElementById('ld-form-profile') as HTMLFormElement|null;
+        if(liveForm)extractProfileFormToState(liveForm,state);
+        const working=state.profileForm;
+        const keepWorking=computeConfigPayloadSignature('profile',buildProfilePayload(working))!==computeConfigPayloadSignature('profile',prepared.payload);
+        if(keepWorking){
+          working.baseVersion=updatedProfile.version;
+          working.dirty=true;working.submissionStatus='saved_local';working.operationId=null;
+          working.lastSavedMessage='上次资料已确认；当前修改仍是草稿，请核对后再次保存。';
+          if(!saveProfileDraft({baseVersion:working.baseVersion,nickname:working.nickname,bio:working.bioIsNull?null:working.bio,timezone:working.timezone,upserts:working.fields,removeIds:working.removeIds,rawInputs:{},updatedAt:new Date().toISOString()})){
+            working.validationError={code:'LOCAL_STORAGE_FAILED',message:'上次资料已确认；当前修改未保存本机，请复制后重试。'};
+            renderApp({preserveModalInput:true});return;
+          }
+        }
         clearPendingConfigMutation(draftKey);
-        clearProfileDraft();
+        if(!keepWorking)clearProfileDraft();
         state.profile = updatedProfile;
         if (state.home) state.home.profile = updatedProfile;
         if (state.user) {
           state.user.name = updatedProfile.nickname;
           state.user.timezone = updatedProfile.timezone;
         }
-        state.profileForm = {
+        if(!keepWorking)state.profileForm = {
           ...createInitialProfileFormState(updatedProfile),
           submissionStatus: 'confirmed_server',
           lastSavedMessage: `个人资料已保存（服务器版本 v${updatedProfile.version}）`
         };
         await syncHomeAndProfileQuietly().catch(() => {});
         renderApp();
-        pushToast('个人资料已保存', `服务器已确认更新至 v${updatedProfile.version}`, 'success');
+        pushToast(keepWorking?'上次资料已确认':'个人资料已保存',keepWorking?'当前修改仍保留为草稿，请核对后再次保存。':`服务器已确认更新至 v${updatedProfile.version}`, 'success');
       } catch (err) {
         state.submittingModal = false;
         if (isUnknownNetworkError(err)) {
@@ -2500,6 +2526,7 @@ function setupEventDelegation(): void {
       checkUnlocks = false
     ): Promise<void> => {
       const draft = extractConfigFormDraft(form, state);
+      if(draft?.confirmedEntityId){pushToast('上次配置已确认','当前输入仍保留为草稿，请复制或丢弃草稿后再新建配置','info');return;}
       const draftKey = draft?.draftKey ?? buildConfigDraftKey(kind);
       const entityId = draft?.entityId ?? state.configForm.entityId ?? generateUuid();
       if (draft && !saveConfigDraft(draft)) {
@@ -2600,6 +2627,19 @@ function setupEventDelegation(): void {
       }
 
       state.submittingModal = false;
+      // Confirm the frozen operation separately from edits made after its response was lost.
+      if(previous && previous.payloadSignature!==sig && draft){
+        if(!saveConfigDraft({...draft,confirmedEntityId:prepared.entityId})){
+          state.configForm.validationError={code:'LOCAL_STORAGE_FAILED',message:'上次配置已在服务器确认；当前修改未保存本机，请复制输入后重试。'};
+          renderModalRegionOnly(true);return;
+        }
+        clearPendingConfigMutation(draftKey);
+        state.configForm.submissionStatus='confirmed_server';
+        state.configForm.operationId=null;
+        await refreshBootstrapAndNotify(undefined,false,true).catch(()=>renderModalRegionOnly(true));
+        pushToast('上次配置已确认','当前修改仍保留为本机草稿，没有另建配置；可复制当前输入或丢弃草稿。','info');
+        return;
+      }
       clearPendingConfigMutation(draftKey);
       clearConfigDraft(draftKey);
       state.configForm = createInitialConfigFormState();

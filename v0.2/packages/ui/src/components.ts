@@ -154,4 +154,3 @@ export function renderStaticAvatarSlot(opts: StaticAvatarSlotOptions = {}): stri
     </div>
   </div>`;
 }
-

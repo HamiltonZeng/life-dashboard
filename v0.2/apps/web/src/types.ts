@@ -351,6 +351,7 @@ export type ConfigMutationKind =
   | 'home-preferences';
 
 export interface PersistedConfigDraft {
+  confirmedEntityId?: string;
   draftKey: string;
   kind: ConfigMutationKind;
   entityId: string;

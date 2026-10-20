@@ -233,6 +233,7 @@ export function extractConfigFormDraft(
     draftKey,
     kind,
     entityId,
+    confirmedEntityId: existingDraft?.confirmedEntityId,
     rawInputs,
     updatedAt: new Date().toISOString()
   };
@@ -275,7 +276,7 @@ export function extractProfileFormToState(form: HTMLFormElement, state: AppState
       if (fType === 'integer') {
         if (rawVal.trim() === '') parsedValue = null;
         else {
-          const n = Number.parseInt(rawVal.trim(), 10);
+          const n = Number(rawVal.trim());
           parsedValue = Number.isNaN(n) ? (rawVal.trim() as any) : n;
         }
       } else if (fType === 'boolean') {
@@ -478,6 +479,8 @@ export function bindDynamicModalControllers(
         state.configForm.submissionStatus = 'unknown_network';
         state.configForm.operationId = pending.operationId;
         state.configForm.entityId = pending.entityId;
+      } else if (draft.confirmedEntityId) {
+        state.configForm.submissionStatus = 'confirmed_server';
       } else if (state.configForm.submissionStatus !== 'conflict_pending') {
         state.configForm.submissionStatus = 'saved_local';
       }

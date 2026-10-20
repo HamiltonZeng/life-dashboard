@@ -164,7 +164,7 @@ function resolveConfigModalContext(state: AppState, kind: ConfigMutationKind) {
     state.configForm = {
       draftKey,
       kind,
-      submissionStatus: pendingOp ? 'unknown_network' : savedDraft ? 'saved_local' : 'idle',
+      submissionStatus: pendingOp ? 'unknown_network' : savedDraft?.confirmedEntityId ? 'confirmed_server' : savedDraft ? 'saved_local' : 'idle',
       operationId: pendingOp ? pendingOp.operationId : null,
       entityId,
       restoredFromStorage: Boolean(savedDraft || pendingOp),
@@ -180,6 +180,8 @@ function resolveConfigModalContext(state: AppState, kind: ConfigMutationKind) {
     }
   }
 
+  if(savedDraft?.confirmedEntityId && !pendingOp) state.configForm.submissionStatus='confirmed_server';
+  const confirmedBanner = savedDraft?.confirmedEntityId ? `<div class="ld-return-banner" data-config-confirmed-draft><strong>上次配置已保存。当前修改仍保留为本机草稿，没有另建配置。</strong><p>可复制当前输入后返回原配置核对；丢弃草稿后才能开始另一份新配置。</p><button type="button" class="ld-btn" data-action="copy-config-draft">复制当前输入</button></div>` : '';
   const pendingBanner = pendingOp
     ? `<div class="ld-return-banner" style="background:var(--ld-warning-soft);border-color:rgba(245,158,11,0.5);" data-config-pending-banner="${escapeHtml(kind)}">
         <div>
@@ -198,7 +200,7 @@ function resolveConfigModalContext(state: AppState, kind: ConfigMutationKind) {
     savedDraft,
     pendingOp,
     entityId,
-    pendingBanner,
+    pendingBanner: confirmedBanner + pendingBanner,
     valBanner
   };
 }
@@ -312,7 +314,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal ? 'disabled' : ''}>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal || ctx.savedDraft?.confirmedEntityId ? 'disabled' : ''}>
             ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建任务'}
           </button>
         </div>
@@ -773,7 +775,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal ? 'disabled' : ''}>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal || ctx.savedDraft?.confirmedEntityId ? 'disabled' : ''}>
             ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建数值定义'}
           </button>
         </div>
@@ -920,7 +922,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${(modMetrics.length === 0 && !ctx.pendingOp) || state.submittingModal ? 'disabled' : ''}>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${(modMetrics.length === 0 && !ctx.pendingOp) || state.submittingModal || ctx.savedDraft?.confirmedEntityId ? 'disabled' : ''}>
             ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建成就定义'}
           </button>
         </div>
@@ -1029,7 +1031,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal ? 'disabled' : ''}>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal || ctx.savedDraft?.confirmedEntityId ? 'disabled' : ''}>
             ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建模块'}
           </button>
         </div>
@@ -1157,7 +1159,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal ? 'disabled' : ''}>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal || ctx.savedDraft?.confirmedEntityId ? 'disabled' : ''}>
             ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建记录模板'}
           </button>
         </div>
