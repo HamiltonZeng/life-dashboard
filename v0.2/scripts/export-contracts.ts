@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { z } from 'zod';
 import * as c from '../packages/contracts/src/index.js';
-const schemas={ProfileInput:c.profileInput,HomePreferencesInput:c.homePreferencesInput,ModuleInput:c.moduleInput,RecordTypeInput:c.recordTypeInput,TaskInput:c.taskInput,MetricInput:c.metricInput,AchievementInput:c.achievementInput,RecordInput:c.recordInput,RecordUpdate:c.recordUpdate,AiGenerationInput:c.aiGenerationInput,AiApplyInput:c.aiApplyInput};
+const schemas={TaskTemplateInput:c.taskTemplateInput,TaskTemplatePatch:c.taskTemplatePatch,MaterializeInput:c.materializeInput,TaskRevokeInput:c.revokeTaskInput,AchievementSeriesInput:c.achievementSeriesInput,Phase2ProfileInput:c.phase2ProfileInput,ObservationInput:c.observationInput,Phase2HomePreferencesInput:c.phase2HomePreferencesInput,TrendQuery:c.trendQuery,Wallet:c.walletDTO,DailyValue:c.dailyValueDTO,TrendBucket:c.trendBucketDTO,ProfileInput:c.profileInput,HomePreferencesInput:c.homePreferencesInput,ModuleInput:c.moduleInput,RecordTypeInput:c.recordTypeInput,TaskInput:c.taskInput,MetricInput:c.metricInput,AchievementInput:c.achievementInput,RecordInput:c.recordInput,RecordUpdate:c.recordUpdate,AiGenerationInput:c.aiGenerationInput,AiApplyInput:c.aiApplyInput};
 const exported=Object.fromEntries(Object.entries(schemas).map(([k,v])=>[k,z.toJSONSchema(v,{io:'input',unrepresentable:'any'})]));
 writeFileSync('packages/contracts/request-schemas.json',JSON.stringify(exported,null,2)+'\n');
 const paths:Record<string,any>={};
@@ -43,4 +43,9 @@ paths['/api/v1/ai/batches/{id}/revoke']={parameters:aiIdParams,post:emptyAiComma
 for(const [route,schema] of [['profile','ProfileInput'],['home-preferences','HomePreferencesInput']]) paths['/api/v1/'+route]={get:{responses},patch:command({$ref:'#/components/schemas/'+schema})};
 paths['/api/v1/home']={get:{responses}};
 paths['/api/v1/export']={get:{summary:'Versioned, checksummed user-data export for manual S1 restore',responses}};
+for(const [path,schema] of [['task-templates','TaskTemplateInput'],['task-instances/materialize','MaterializeInput'],['achievement-series','AchievementSeriesInput'],['profile/observations','ObservationInput']])paths['/api/v1/'+path]={...paths['/api/v1/'+path],post:command({$ref:'#/components/schemas/'+schema})};
+paths['/api/v1/task-templates/{id}']={parameters:aiIdParams,patch:command({$ref:'#/components/schemas/TaskTemplatePatch'})};
+paths['/api/v1/tasks/{id}/revoke']={parameters:aiIdParams,post:command({$ref:'#/components/schemas/TaskRevokeInput'})};
+for(const path of ['task-templates','task-instances','achievement-series','achievement-summary','wallet','wallet/ledger'])paths['/api/v1/'+path]={...paths['/api/v1/'+path],get:{responses}};
+paths['/api/v1/metrics/{id}/trend']={parameters:aiIdParams,get:{responses,parameters:Object.entries(exported.TrendQuery.properties??{}).map(([name,schema])=>({in:'query',name,schema}))}};
 writeFileSync('packages/contracts/openapi.json',JSON.stringify({openapi:'3.1.0',info:{title:'人生面板 T2/T3 API',version:c.CONTRACT_VERSION},servers:[{url:'http://localhost:18080'}],security:[{localSession:[]}],paths,components:{securitySchemes:{localSession:{type:'apiKey',in:'cookie',name:'life_session'}},schemas:exported}},null,2)+'\n');

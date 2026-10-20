@@ -1,15 +1,6 @@
 import { z } from 'zod';
-
-export const uuid = z.uuid();
-export const timezone = z.string().max(80).refine(v => { try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; } }, 'Invalid IANA timezone');
-export const decimal = z.string().regex(/^-?(0|[1-9]\d{0,11})(\.\d{1,6})?$/, 'Use a decimal string with up to 6 fractional digits');
-export const fieldSchema = z.strictObject({
-  key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/), label: z.string().min(1).max(60),
-  type: z.enum(['text', 'textarea', 'integer', 'decimal', 'date', 'boolean', 'single_select']),
-  required: z.boolean(), unit: z.string().max(30).nullable().default(null),
-  options: z.array(z.string().min(1).max(80)).max(30).default([]),
-  minimum: z.number().finite().nullable().default(null), maximum: z.number().finite().nullable().default(null)
-});
+import {uuid,timezone,decimal,fieldSchema} from './primitives.js';
+export {uuid,timezone,decimal,fieldSchema} from './primitives.js';
 export const recordTypeInput = z.strictObject({ id: uuid, module_id: uuid, name: z.string().min(1).max(60), fields: z.array(fieldSchema).min(1).max(30) });
 export const moduleInput = z.strictObject({ id: uuid, name: z.string().min(1).max(60), description: z.string().max(1000).default(''), icon: z.enum(['book','dumbbell','wallet','sparkles','trophy','flag','leaf','music','chat','star']), color: z.enum(['blue','green','amber','violet','rose','cyan','slate']) });
 export const recordInput = z.strictObject({
@@ -93,3 +84,5 @@ export const homePreferencesInput=z.strictObject({
 });
 export type ProfileInput=z.infer<typeof profileInput>;
 export type HomePreferencesInput=z.infer<typeof homePreferencesInput>;
+
+export * from './phase2.js';
