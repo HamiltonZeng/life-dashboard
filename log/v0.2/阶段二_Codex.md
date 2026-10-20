@@ -43,3 +43,15 @@ C0时新增端点尚未实现，不凭Schema声明可用；后续逐检查点补
 ## 最终离线结果
 
 `sh tests/v02-phase2/run.sh` 最终exit0：database PASS、migration PASS、checks PASS（tsc、26/26单元、契约导出）、integration PASS（63/63）、phase2 PASS（21/21），合计110项、fail0、skip0。git diff --check通过。重启一致性与隔离预览备份恢复演练另外PASS。上述最终结果覆盖所有本轮代码修复；无需安装依赖/下载镜像/调用真实AI。
+
+## 用户授权接续 Gemini 与最终 C4 收口
+
+用户报告Gemini崩溃后，检查发现其v02/phase2-gemini已带入e5722bd后端，13个文件未提交、57条类型错误。先保存原源码和补丁（.runtime/reviews/gemini-crash-audit），未重置工作树。用户明确授权“帮我完成Gemini的收尾工作”后，Codex在原工作树修复前端并补测试/日志；原目录作者边界因此由用户授权覆盖，不是冒称Gemini本人完成或独立审计。
+
+接续交付a60c9f0：真实任务/系列/观测/固定/趋势契约，冻结操作可靠保存，冲突显式采用，趋势读取失败不造假，未来规则编辑、派生来源、钱包分页、移动触摸/键盘和首页。原18套134断言保留、新4项单元；旧20个真实Chromium场景与新15个业务场景全部通过。完整UI入口run-web.sh只允许Gemini工作树，主wrapper gemini项目、18182、postgres-test/life_dashboard_test，未调用DeepSeek或模型。API/web重启后原创建/完成回执与导出全等，无重复奖励。手机仅360px模拟，实机/系统键盘未测。
+
+将Gemini干净提交a60c9f0快进合入v02/phase2-codex，随后Codex后端入口再次全部PASS：26单元+63旧集成+21二阶段=110项，0失败/0跳过。旧tests/v02-phase1保留原件，新的旧浏览器回归副本只更换隔离守卫/名称/产物位置，不修改旧断言。新UI最终日志、截图和证据在docs/v02-phase2/web与Gemini.runtime/test-artifacts/v02-phase2-web。
+
+更新18181前通过scripts/export-data.ts只读备份到私有0600的pre-ui-integration.json，再仅重启Codex web构建UI。实际gateway读home/export/capabilities与五个前端JS文件成功；与更新前备份比较data/migrations逐字段相同，15条原记录、修订、回执、账本均保留。ui-integration.json为本次产物。无主18080切换、DB重置、GitHub推送或依赖下载。
+
+此前日志中“C4待Gemini交付”是历史状态，本节替代：现已由用户授权接续完成前端、验收和集成，README/PRD V02-01–27矩阵已更新。崩溃审计报告保留为历史证据，标明已解决。
