@@ -1,5 +1,5 @@
 {
-  "name": "life-dashboard-v0-1",
+  "name": "life-dashboard-v0-2",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.18.3",
@@ -15,7 +15,8 @@
     "export:data": "tsx scripts/export-data.ts",
     "restore:data": "tsx scripts/restore-data.ts",
     "verify:web": "tsx apps/web/scripts/verify-web.ts",
-    "verify:all": "sh scripts/verify-all.sh"
+    "verify:all": "sh scripts/verify-all.sh",
+    "test:release": "sh tests/v02-phase3/run.sh"
   },
   "dependencies": {
     "@fastify/rate-limit": "11.2.1",
@@ -33,5 +34,6 @@
     "playwright": "1.64.1",
     "tsx": "4.20.6",
     "typescript": "5.9.3"
-  }
+  },
+  "version": "0.2.0-rc.1"
 }

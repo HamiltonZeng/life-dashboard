@@ -8,7 +8,7 @@ writeFileSync('packages/contracts/request-schemas.json',JSON.stringify(exported,
 const paths:Record<string,any>={};
 const response={description:'Successful response',content:{'application/json':{schema:{type:'object',properties:{data:{},operation_id:{type:'string',format:'uuid'},page:{type:'object'}},required:['data']}}}};
 const error={description:'Error envelope: error.code, error.message, optional error.details, error.request_id'};
-const responses={'200':response,'400':error,'401':error,'403':error,'404':error,'409':error,'422':error};
+const responses={'200':response,'400':error,'401':error,'403':error,'404':error,'409':error,'422':error,'428':error};
 const aiResponses={...responses,'429':error,'502':error,'503':error,'504':error};
 const mutationParams=[{in:'header',name:'Idempotency-Key',required:true,schema:{type:'string',format:'uuid'}},{in:'header',name:'Origin',required:true,schema:{type:'string'}}];
 for(const [name,schema] of Object.entries({'modules':'ModuleInput','record-types':'RecordTypeInput','tasks':'TaskInput','metrics':'MetricInput','achievements':'AchievementInput','records':'RecordInput','awards':null})) {

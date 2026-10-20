@@ -129,13 +129,8 @@ export function buildFallbackHomeFromBootstrap(
       t.status !== 'cancelled' &&
       t.status !== 'skipped'
   );
-  const today = getTodayInZone(profile.timezone);
-  const eligibleTasks = openTasks.filter(
-    t =>
-      preferences.pinned_task_ids.includes(t.id) ||
-      t.definition.business_date === today
-  );
-  const tasks = pinOrder(eligibleTasks, preferences.pinned_task_ids);
+  // Period validity, template activation and pin ordering require the authoritative home projection.
+  const tasks: TaskRow[] = [];
 
   const recent_achievements: HomeAchievementRow[] = [];
   const sortedAwards = [...data.achievement_awards]

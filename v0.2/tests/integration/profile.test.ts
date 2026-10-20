@@ -1,3 +1,4 @@
+import {guardSynthetic} from '../v02-phase3/guard.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -6,7 +7,7 @@ import {createPool} from '../../packages/db/src/client.js';
 import {seed,LOCAL_USER_ID,DEFAULT_MODULE_IDS,DEFAULT_TEMPLATE_IDS} from '../../packages/db/src/seed.js';
 test('MVP profile rejects AI before provider setup and keeps manual data usable',async()=>{
   assert.equal(process.env.NODE_ENV,'test');assert.equal(process.env.DATABASE_HOST,'postgres-test');assert.equal(process.env.DATABASE_NAME,'life_dashboard_test');
-  const pool=createPool();await pool.query('TRUNCATE users CASCADE');await seed(pool);
+  const pool=createPool();(guardSynthetic(),await pool.query('TRUNCATE users CASCADE'));await seed(pool);
   const savedUrl=process.env.DEEPSEEK_BASE_URL;process.env.DEEPSEEK_BASE_URL='bad-url-would-break-development';
   let calls=0;
   const app=await buildApp(pool,{profile:'mvp',aiAdapter:{provider:'deepseek',model:'unused',cloud:true,async generate(){calls++;throw Error('must never call');}}});

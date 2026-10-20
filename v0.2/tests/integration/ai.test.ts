@@ -1,3 +1,4 @@
+import {guardSynthetic} from '../v02-phase3/guard.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
@@ -13,7 +14,7 @@ test('T2/T3 AI generation acceptance (PostgreSQL)', async t => {
   assert.equal(process.env.DATABASE_NAME, 'life_dashboard_test', 'Refuse to touch a non-test database');
   assert.equal(process.env.DATABASE_HOST, 'postgres-test');
   const pool = createPool();
-  await pool.query('TRUNCATE users CASCADE');
+  (guardSynthetic(),await pool.query('TRUNCATE users CASCADE'));
   await seed(pool);
   const origin = 'http://localhost:18080';
   let cookie = '';

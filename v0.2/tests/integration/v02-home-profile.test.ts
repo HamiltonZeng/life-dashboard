@@ -1,3 +1,4 @@
+import {guardSynthetic} from '../v02-phase3/guard.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
@@ -9,7 +10,7 @@ import { exportUserData, restoreUserData } from '../../packages/db/src/backup.js
 
 test('v0.2 profile and home isolated acceptance',async t=>{
   assert.equal(process.env.NODE_ENV,'test');assert.equal(process.env.DATABASE_HOST,'postgres-test');assert.equal(process.env.DATABASE_NAME,'life_dashboard_test');
-  const pool=createPool();await pool.query('TRUNCATE users CASCADE');await seed(pool);
+  const pool=createPool();(guardSynthetic(),await pool.query('TRUNCATE users CASCADE'));await seed(pool);
   const app=await buildApp(pool,{profile:'mvp'});
   const token='d'.repeat(64),cookie='life_session='+token;
   const login=async()=>pool.query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')",[createHash('sha256').update(token).digest('hex'),LOCAL_USER_ID]);
@@ -112,7 +113,7 @@ test('v0.2 profile and home isolated acceptance',async t=>{
     await t.test('profile preferences revisions and receipts survive empty database restore',async()=>{
       const before=await exportUserData(pool,LOCAL_USER_ID);assert.equal(before.counts.profile_fields,1);assert.ok(before.counts.configuration_revisions>=4);
       const p=await ok('GET','profile'),pref=await ok('GET','home-preferences');
-      await pool.query('TRUNCATE users CASCADE');await restoreUserData(pool,before);await login();
+      (guardSynthetic(),await pool.query('TRUNCATE users CASCADE'));await restoreUserData(pool,before);await login();
       assert.deepEqual(await ok('GET','profile'),p);assert.deepEqual(await ok('GET','home-preferences'),pref);
       const after=await exportUserData(pool,LOCAL_USER_ID);assert.deepEqual(after.data,before.data);assert.deepEqual(after.migrations,before.migrations);
       const replay=await req('PATCH','profile',profilePayload,profileOperation);assert.equal(replay.statusCode,200,replay.body);assert.equal(replay.json().data.version,2);assert.deepEqual(await ok('GET','profile'),p);

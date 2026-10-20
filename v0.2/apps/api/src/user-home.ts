@@ -1,4 +1,6 @@
-import {instanceView} from './phase2-tasks.js';
+import {selectHomeTasks} from '../../../packages/domain/src/phase2/home-tasks.js';
+import {bindingFingerprint} from './observation-binding.js';
+import {instanceViews} from './phase2-tasks.js';
 import {achievementSummary} from './phase2-achievements.js';
 import {readWallet} from './phase2-wallet.js';
 import {validateBinding,hydrateFields} from './phase2-profile.js';
@@ -13,7 +15,7 @@ import type { Service } from './service.js';
 export async function readProfile(c:Client,user:string,core?:Service) {
   const row=(await c.query('SELECT u.id,u.name nickname,u.timezone,p.version,p.bio FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id WHERE u.id=$1',[user])).rows[0];
   requireThat(row,'NOT_FOUND','User not found',404);
-  const fields=(await c.query('SELECT id,module_id,key,label,type,kind,value,unit,options,binding FROM profile_fields WHERE user_id=$1 ORDER BY module_id,key,id',[user])).rows.map(({binding,...f})=>binding?{...f,binding}:f);
+  const fields=(await c.query('SELECT id,module_id,key,label,type,kind,value,unit,options,binding FROM profile_fields WHERE user_id=$1 ORDER BY module_id,key,id',[user])).rows.map(({binding,...f})=>binding?{...f,binding,...(f.kind==='observation'?{binding_fingerprint:bindingFingerprint({...f,binding,user_id:user})}:{})}:f);
   return {...row,version:row.version??1,bio:row.bio??null,static_avatar_ref:null,module_fields:core?await hydrateFields(core,c,user,fields):fields};
 }
 export async function readPreferences(c:Client,user:string) {
@@ -89,17 +91,16 @@ export async function readHome(service:Service,c:Client,user:string) {
   const facts=await service.facts(c,user);
   const pinOrder=(rows:any[],ids:string[])=>[...ids.map(id=>rows.find(r=>r.id===id)).filter(Boolean),...rows.filter(r=>!ids.includes(r.id))];
   const metrics=pinOrder(availableMetrics,preferences.pinned_metric_ids).map(r=>({...r,computed:calculateMetric(r.definition,facts,now)}));
-  const availableTasks=(await c.query("SELECT * FROM tasks WHERE user_id=$1 AND status NOT IN ('cancelled','skipped') ORDER BY created_at,id",[user])).rows.filter(r=>active.includes(r.module_id));
-  const today=DateTime.fromJSDate(now,{zone:profile.timezone}).toISODate();
-  const typedIds:string[]=[];for(const pin of preferences.task_pins??[]){if(pin.kind==='instance')typedIds.push(pin.id);else{const r=(await c.query('SELECT task_id FROM task_instance_details WHERE user_id=$1 AND template_id=$2 AND period_start<=$3 AND (period_end IS NULL OR period_end>$3) ORDER BY period_start DESC LIMIT 1',[user,pin.id,now])).rows[0];if(r)typedIds.push(r.task_id);}}
-  const currentIds=(await c.query('SELECT task_id FROM task_instance_details WHERE user_id=$1 AND period_start<=$2 AND (period_end IS NULL OR period_end>$2)',[user,now])).rows.map(r=>r.task_id);
-  const pins=[...new Set([...typedIds,...preferences.pinned_task_ids])];
-  const tasks=await Promise.all(pinOrder(availableTasks.filter(r=>pins.includes(r.id)||r.definition.business_date===today||currentIds.includes(r.id)),pins).map(t=>instanceView(c,user,t.id)));
+  const availableTasks=(await c.query("SELECT t.*,d.category,d.period_start,d.period_end,tt.phase2,tt.status template_status,m.status module_status FROM tasks t JOIN modules m ON m.user_id=t.user_id AND m.id=t.module_id LEFT JOIN task_instance_details d ON d.user_id=t.user_id AND d.task_id=t.id LEFT JOIN task_templates tt ON tt.user_id=t.user_id AND tt.id=t.template_id WHERE t.user_id=$1 AND t.status NOT IN ('cancelled','skipped') ORDER BY t.created_at,t.id",[user])).rows.filter(r=>active.includes(r.module_id));
+  const selected=selectHomeTasks(availableTasks,preferences.task_pins??[],now,profile.timezone);
+  const views=new Map((await instanceViews(c,user,selected.tasks.map(t=>t.id))).map(t=>[t.id,t]));
+  const tasks=selected.tasks.map(t=>views.get(t.id));
   const recent_achievements=(await c.query("SELECT a.*,d.definition,d.module_id FROM achievement_awards a JOIN achievement_definitions d ON d.user_id=a.user_id AND d.id=a.achievement_id JOIN metric_definitions m ON m.user_id=d.user_id AND m.id=d.metric_id JOIN modules mod ON mod.user_id=d.user_id AND mod.id=d.module_id AND mod.status='enabled' WHERE a.user_id=$1 AND a.state='unlocked' AND d.archived_at IS NULL AND m.archived_at IS NULL ORDER BY a.unlocked_at DESC,a.id LIMIT 10",[user])).rows.filter(r=>active.includes(r.module_id));
   const milestones=(await c.query("SELECT a.*,s.module_id,s.definition,m.threshold,m.label FROM series_awards a JOIN achievement_series s ON s.user_id=a.user_id AND s.id=a.series_id JOIN series_milestones m ON m.user_id=a.user_id AND m.id=a.milestone_id JOIN modules mod ON mod.user_id=s.user_id AND mod.id=s.module_id AND mod.status='enabled' WHERE a.user_id=$1 AND a.state='unlocked'",[user])).rows;
   recent_achievements.push(...milestones);recent_achievements.sort((a,b)=>new Date(b.unlocked_at).getTime()-new Date(a.unlocked_at).getTime()||a.id.localeCompare(b.id));recent_achievements.splice(10);
   const warnings=[...preferences.pinned_metric_ids.filter((id:string)=>!availableMetrics.some(r=>r.id===id)).map((id:string)=>({kind:'metric',id,code:'PIN_UNAVAILABLE'})),...preferences.pinned_task_ids.filter((id:string)=>!availableTasks.some(r=>r.id===id)).map((id:string)=>({kind:'task',id,code:'PIN_UNAVAILABLE'}))];
   const trends=[];for(const pin of preferences.pinned_trends??[]){if(availableMetrics.some(m=>m.id===pin.metric_id))trends.push({pin,result:await readTrend(service,c,user,pin.metric_id,pinToQuery(pin))});else warnings.push({kind:'metric',id:pin.metric_id,code:'PIN_UNAVAILABLE'});}
-  for(const pin of preferences.task_pins??[])if(pin.kind==='instance'?!availableTasks.some(t=>t.id===pin.id):!(await c.query("SELECT t.id FROM task_templates t JOIN modules m ON m.user_id=t.user_id AND m.id=t.module_id WHERE t.user_id=$1 AND t.id=$2 AND t.status='enabled' AND m.status='enabled'",[user,pin.id])).rows.length)warnings.push({kind:'task',id:pin.id,code:'PIN_UNAVAILABLE'});
-  return {cursor:(await c.query('SELECT seq FROM user_sync_clock WHERE user_id=$1',[user])).rows[0].seq,profile,preferences,metrics,tasks,recent_achievements,warnings:[...new Map(warnings.map(w=>[w.kind+':'+w.id,w])).values()],trends,achievement_summary:await achievementSummary(c,user),wallet:await readWallet(c,user),avatar:{enabled:false,model_asset_ref:null}};
+  const activeTemplateIds=new Set((await c.query("SELECT t.id FROM task_templates t JOIN modules m ON m.user_id=t.user_id AND m.id=t.module_id WHERE t.user_id=$1 AND t.status='enabled' AND m.status='enabled'",[user])).rows.map(t=>t.id));
+  for(const pin of preferences.task_pins??[])if(pin.kind==='instance'?!availableTasks.some(t=>t.id===pin.id):!activeTemplateIds.has(pin.id))warnings.push({kind:'task',id:pin.id,code:'PIN_UNAVAILABLE'});
+  return {cursor:(await c.query('SELECT seq FROM user_sync_clock WHERE user_id=$1',[user])).rows[0].seq,profile,preferences,metrics,tasks,task_count:selected.total,recent_achievements,warnings:[...new Map(warnings.map(w=>[w.kind+':'+w.id,w])).values()],trends,achievement_summary:await achievementSummary(c,user),wallet:await readWallet(c,user),avatar:{enabled:false,model_asset_ref:null}};
 }

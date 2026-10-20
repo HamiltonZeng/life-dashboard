@@ -681,8 +681,8 @@ export const api = {
   materializeTaskInstances(
     templateIds?: string[],
     idempotencyKey?: string
-  ): Promise<{ instances: TaskRow[]; reused: boolean[] }> {
-    return request<{ instances: TaskRow[]; reused: boolean[] }>(
+  ): Promise<{ instances: TaskRow[]; reused: boolean[];server_time?:string;next_check_at?:string|null;total_templates?:number }> {
+    return request<{ instances: TaskRow[]; reused: boolean[];server_time?:string;next_check_at?:string|null;total_templates?:number }>(
       'POST',
       '/task-instances/materialize',
       templateIds ? { template_ids: templateIds } : {},

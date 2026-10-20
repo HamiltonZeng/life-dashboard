@@ -12,7 +12,7 @@ test('observation sources, explicit context, version conflicts and derived read-
  await f.ok('PATCH','profile',{base_version:1,field_upserts:[field,derived]});
  assert.equal((await f.pool.query('SELECT count(*) FROM records')).rows[0].count,'0');
  const task=await f.template({completion_mode:'record_required',rule:{kind:'sum',record_type_id,field_key:'duration_minutes',unit:'分钟',threshold:'20'}});
- const body={id:randomUUID(),field_id:field.id,occurred_at:'2026-10-20T09:00:00Z',timezone:'Asia/Shanghai',value:20};
+ const body={id:randomUUID(),field_id:field.id,binding_fingerprint:(await f.ok('GET','profile')).module_fields.find((x:any)=>x.id===field.id).binding_fingerprint,occurred_at:'2026-10-20T09:00:00Z',timezone:'Asia/Shanghai',value:20};
  assert.equal((await f.req('POST','profile/observations',body)).statusCode,422);
  const op=randomUUID(),d=await f.ok('POST','profile/observations',{...body,context_values:{topic:'synthetic observation'}},op);
  assert.equal(d.record.version,1);assert.ok(d.impact.changes.some((x:any)=>x.entity_type==='wallet_entry'));
@@ -93,7 +93,7 @@ test('full graph backup preserves bindings, milestone awards, recurring snapshot
  await f.ok('POST','achievement-series',{id:randomUUID(),module_id,name:'fixture milestones',record_type_id,aggregation:'distinct_days',unit:'天',timezone:'Asia/Shanghai',milestones:[{id:randomUUID(),threshold:'1'},{id:randomUUID(),threshold:'3'}]});
  const task=await f.template({completion_mode:'record_required',rule:{kind:'count',record_type_id,threshold:'1'}});
  await f.ok('PATCH','home-preferences',{base_version:1,task_pins:[{kind:'template',id:task.template.id}],pinned_trends:[{metric_id:metric.id,range:'last_7_days',grain:'1d'}]});
- const body={id:randomUUID(),field_id:field.id,occurred_at:'2026-10-20T09:00:00Z',timezone:'Asia/Shanghai',value:30,context_values:{topic:'synthetic full graph'}},key=randomUUID();await f.ok('POST','profile/observations',body,key);
+ const body={id:randomUUID(),field_id:field.id,binding_fingerprint:(await f.ok('GET','profile')).module_fields.find((x:any)=>x.id===field.id).binding_fingerprint,occurred_at:'2026-10-20T09:00:00Z',timezone:'Asia/Shanghai',value:30,context_values:{topic:'synthetic full graph'}},key=randomUUID();await f.ok('POST','profile/observations',body,key);
  const before=await exportUserData(f.pool,LOCAL_USER_ID);for(const table of ['profile_fields','series_awards','wallet_ledger','reward_qualifications','task_instance_details'])assert.ok(before.counts[table]>0,table);
  await f.pool.query('TRUNCATE users CASCADE');await restoreUserData(f.pool,before);
  const login=await f.app.inject({method:'POST',url:'/api/v1/session',headers:{origin:'http://codex.test'},payload:{login_secret:process.env.LOCAL_LOGIN_SECRET}}),cookie=String(login.headers['set-cookie']).split(';')[0];

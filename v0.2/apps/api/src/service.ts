@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { createDb, type Client } from '../../../packages/db/src/client.js';
 import { activeMetrics } from '../../../packages/db/src/references.js';
-import {executeTasks,recomputeTasks,instanceView} from './phase2-tasks.js';
+import {executeTasks,recomputeTasks,instanceView,instanceViews} from './phase2-tasks.js';
 import {createSeries,recomputeSeries} from './phase2-achievements.js';
 import { readProfile, readPreferences, executeConfiguration, readHome } from './user-home.js';
 import * as contract from '../../../packages/contracts/src/index.js';
@@ -55,7 +55,7 @@ export class Service {
       if(!['profile','home-preferences'].includes(path)) await this.recompute(c,user);
       let data=result as any;
       if(data?.instance?.id)data={...data,instance:await instanceView(c,user,data.instance.id)};
-      if(path==='task-instances/materialize'&&data?.instances)data={...data,instances:await Promise.all(data.instances.map((t:any)=>instanceView(c,user,t.id)))};
+      if(path==='task-instances/materialize'&&data?.instances){const views=new Map((await instanceViews(c,user,data.instances.map((t:any)=>t.id))).map(t=>[t.id,t]));data={...data,instances:data.instances.map((t:any)=>views.get(t.id))};}
       if(path.startsWith('tasks/')&&data?.id)data=await instanceView(c,user,data.id);
       if(path==='profile/observations')data={...data,profile:await readProfile(c,user,this),impact:{cursor:(await c.query('SELECT seq FROM user_sync_clock WHERE user_id=$1',[user])).rows[0].seq,changes:(await c.query('SELECT * FROM change_log WHERE user_id=$1 AND seq>$2 ORDER BY seq',[user,before])).rows}};
       const response = {data, operation_id: operation};

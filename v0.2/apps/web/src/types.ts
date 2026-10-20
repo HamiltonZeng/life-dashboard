@@ -522,6 +522,7 @@ export interface ProfileFieldSourceRef {
 }
 
 export interface ProfileFieldRow {
+  binding_fingerprint?:string;
   id: string;
   module_id: string;
   key: string;
@@ -556,6 +557,7 @@ export interface ProfileInput {
 }
 
 export interface ObservationWriteInput {
+  binding_fingerprint?:string;
   id: string;
   field_id: string;
   occurred_at: string;

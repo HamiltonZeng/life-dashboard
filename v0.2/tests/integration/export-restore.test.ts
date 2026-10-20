@@ -1,3 +1,4 @@
+import {guardSynthetic} from '../v02-phase3/guard.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -20,7 +21,7 @@ test('S1 minimal export/restore acceptance', async t => {
   assert.equal(process.env.DATABASE_NAME, 'life_dashboard_test', 'Refuse to reset a non-test database');
   assert.equal(process.env.DATABASE_HOST, 'postgres-test');
   const pool = createPool();
-  await pool.query('TRUNCATE users CASCADE');
+  (guardSynthetic(),await pool.query('TRUNCATE users CASCADE'));
   await seed(pool);
   const app = await buildApp(pool);
   const origin = 'http://localhost:18080';
@@ -131,7 +132,7 @@ test('S1 minimal export/restore acceptance', async t => {
     });
 
     await t.test('isolated restore reproduces facts, derived state and receipts', async () => {
-      await pool.query('TRUNCATE users CASCADE');
+      (guardSynthetic(),await pool.query('TRUNCATE users CASCADE'));
       const result = await restoreUserData(pool, backup);
       assert.equal(result.user_id, LOCAL_USER_ID);
       assert.equal(result.cursor, backup.cursor);
@@ -176,7 +177,7 @@ test('S1 minimal export/restore acceptance', async t => {
       broken.data.records[0].module_id = randomUUID();
       delete (broken as any).checksum;
       (broken as any).checksum = backupChecksum(broken as any);
-      await pool.query('TRUNCATE users CASCADE');
+      (guardSynthetic(),await pool.query('TRUNCATE users CASCADE'));
       await assert.rejects(() => restoreUserData(pool, broken));
       const users = await pool.query('SELECT count(*)::int AS n FROM users');
       assert.equal(users.rows[0].n, 0, 'failed restore must leave the target empty');

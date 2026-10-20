@@ -1,3 +1,4 @@
+function readBindingSnapshot(raw?:string){try{const v=JSON.parse(raw??'null');return v&&typeof v.binding?.record_type_id==='string'&&typeof v.binding?.field_key==='string'&&typeof v.type==='string'&&(v.unit===null||typeof v.unit==='string')?v:undefined;}catch{return undefined;}}
 import {
   COMPLETION_MODE_META,
   escapeHtml,
@@ -525,8 +526,10 @@ export function renderPhase2Modal(state: AppState, data: BootstrapData): string 
     const saved=loadConfigDraft('observation:'+field.id);
     const raw=saved?.rawInputs??{};
     const pending=getPendingConfigMutation<any>('phase2:observation:'+field.id);
-    const obsForm = state.observationForm ?? {
+    const obsForm: NonNullable<AppState['observationForm']> = state.observationForm ?? {
       fieldId: field.id,
+      bindingFingerprint:raw.binding_fingerprint??field.binding_fingerprint,
+      bindingSnapshot:readBindingSnapshot(raw.binding_snapshot)??{binding:field.binding!,type:field.type,unit:field.unit},
       mode: (modal.mode??raw.obs_mode??'new') as 'new'|'correct',
       occurredAt: raw.occurred_at??sourceRec?.occurred_at??getLocalIsoWithOffset(),
       timezone: raw.timezone??state.profile?.timezone??userTz,
@@ -587,6 +590,9 @@ export function renderPhase2Modal(state: AppState, data: BootstrapData): string 
             <div><strong>联动影响说明：</strong>观测写入通过统一记录事实核心执行，提交成功后将在同一事务内重算关联周期任务、数值趋势、成就系列与首页摘要。</div>
           </div>
 
+          <input type="hidden" name="binding_snapshot" value="${escapeHtml(JSON.stringify(obsForm.bindingSnapshot))}" />
+          <input type="hidden" name="binding_fingerprint" value="${escapeHtml(obsForm.bindingFingerprint??'')}" />
+          ${obsForm.bindingConflict?`<div class="ld-conflict-panel" role="alert">绑定已改变。原映射：${escapeHtml(String(obsForm.bindingSnapshot?.binding.record_type_id))} / ${escapeHtml(String(obsForm.bindingSnapshot?.binding.field_key))}，类型 ${escapeHtml(obsForm.bindingSnapshot?.type??'未知')}，单位 ${escapeHtml(obsForm.bindingSnapshot?.unit??'无')}；新映射：${escapeHtml(obsForm.bindingConflict.binding.record_type_id)} / ${escapeHtml(obsForm.bindingConflict.binding.field_key)}，类型 ${escapeHtml(obsForm.bindingConflict.type)}，单位 ${escapeHtml(obsForm.bindingConflict.unit??'无')}。当前输入尚未保存。<button class="ld-btn" type="button" data-action="observation-adopt-binding">确认使用最新绑定（保留当前输入）</button></div>`:''}
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">写入方式 (mode) *</span>

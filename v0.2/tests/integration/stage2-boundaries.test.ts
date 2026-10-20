@@ -1,3 +1,4 @@
+import {guardSynthetic} from '../v02-phase3/guard.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -11,7 +12,7 @@ import {ALL_CONTENT,exampleBlueprint,extendBlueprint} from '../ai/fixtures.js';
 
 test('S0-A regression: R1–R4 and total model deadline',async t=>{
   assert.equal(process.env.NODE_ENV,'test');assert.equal(process.env.DATABASE_HOST,'postgres-test');assert.equal(process.env.DATABASE_NAME,'life_dashboard_test');
-  const pool=createPool();await pool.query('TRUNCATE users CASCADE');await seed(pool);
+  const pool=createPool();(guardSynthetic(),await pool.query('TRUNCATE users CASCADE'));await seed(pool);
   const token='b'.repeat(64),cookie='life_session='+token,origin='http://localhost:18080';
   await pool.query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')",[createHash('sha256').update(token).digest('hex'),LOCAL_USER_ID]);
   const app=await buildApp(pool,{aiAdapter:stubAdapter([JSON.stringify(exampleBlueprint)])});

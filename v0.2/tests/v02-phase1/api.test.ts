@@ -14,7 +14,8 @@ test('DeepSeek phase-one independent API specification',async t=>{
     assert.equal((await f.request('PATCH','profile',{base_version:1,nickname:'x'},undefined,{origin:'http://evil.invalid'})).statusCode,403);
     assert.equal((await f.request('PATCH','profile',{base_version:1,nickname:'x'},undefined,{'idempotency-key':''})).statusCode,400);
     const caps=await f.ok('GET','capabilities');for(const k of ['home','home_preferences','profile_fields'])assert.equal(caps[k],true);
-    for(const k of ['ai_chat','ai_recording','ai_profile_update','ai_reward_pricing','avatar_renderer','avatar_redemption','recurring_tasks'])assert.equal(caps[k],false);
+    for(const k of ['ai_chat','ai_recording','ai_profile_update','ai_reward_pricing','avatar_renderer','avatar_redemption'])assert.equal(caps[k],false);
+    assert.equal(caps.recurring_tasks,true);
     for(const path of ['ai/chat','ai/recording','ai/profile-update','ai/reward-pricing','avatar/render','avatar/redeem','wallet']){const r=await f.request('POST',path,{balance:999});assert.equal(r.statusCode,409);assert.equal(r.json().error.code,'FEATURE_DISABLED');}
     assert.equal((await f.pool.query('SELECT count(*)::int n FROM ai_generation_jobs')).rows[0].n,0);
   });
@@ -23,7 +24,7 @@ test('DeepSeek phase-one independent API specification',async t=>{
     assert.equal(h.profile.id,LOCAL_USER_ID);assert.equal(h.profile.nickname,'本地用户');assert.equal(h.profile.version,1);assert.equal(h.profile.bio,null);assert.equal(h.profile.static_avatar_ref,null);assert.deepEqual(h.profile.module_fields,[]);
     assert.equal(h.preferences.version,1);assert.equal(h.preferences.minimal_mode,false);assert.deepEqual(h.preferences.pinned_trends,[]);
     for(const key of ['metrics','tasks','recent_achievements'])assert.deepEqual(h[key],[]);
-    assert.equal(h.wallet,null);assert.deepEqual(h.avatar,{enabled:false,model_asset_ref:null});
+    assert.equal(h.wallet.balance,'0');assert.equal(h.wallet.policy_version,'reward-policy-v1');assert.deepEqual(h.avatar,{enabled:false,model_asset_ref:null});
     await f.ok('GET','profile');await f.ok('GET','home-preferences');assert.deepEqual((await exportUserData(f.pool,LOCAL_USER_ID)).data,before.data);
   });
   await scenario('D03 concurrent replays payload mismatch and version race',async f=>{
@@ -84,7 +85,8 @@ test('DeepSeek phase-one independent API specification',async t=>{
     let p=await f.ok('PATCH','home-preferences',{base_version:2,minimal_mode:true});p=await f.ok('PATCH','home-preferences',{base_version:p.version,minimal_mode:false});assert.deepEqual(p.pinned_metric_ids,payload.pinned_metric_ids);assert.deepEqual(p.pinned_task_ids,payload.pinned_task_ids);
     assert.equal((await f.request('PATCH','home-preferences',{base_version:1,minimal_mode:true})).statusCode,409);
     for(const body of [{pinned_metric_ids:Array.from({length:5},()=>randomUUID())},{pinned_task_ids:Array.from({length:6},()=>randomUUID())}])assert.equal((await f.request('PATCH','home-preferences',{base_version:p.version,...body})).statusCode,422);
-    for(const body of [{pinned_task_ids:[g.task.id,g.task.id]},{pinned_trends:[]}])assert.equal((await f.request('PATCH','home-preferences',{base_version:p.version,...body})).statusCode,400);
+    assert.equal((await f.request('PATCH','home-preferences',{base_version:p.version,pinned_task_ids:[g.task.id,g.task.id]})).statusCode,400);
+    const cleared=await f.ok('PATCH','home-preferences',{base_version:p.version,pinned_trends:[]});assert.deepEqual(cleared.pinned_trends,[]);
     await f.ok('PATCH',`modules/${g.module_id}`,{base_version:1,status:'archived'});h=await f.ok('GET','home');assert.deepEqual(h.metrics,[]);assert.deepEqual(h.tasks,[]);assert.equal(h.warnings.length,3);assert.deepEqual(h.preferences.pinned_task_ids,[g.task.id]);
   });
   await scenario('D07 facts sources revisions and no profile side effects',async f=>{
@@ -104,7 +106,7 @@ test('DeepSeek phase-one independent API specification',async t=>{
     await f.pool.query('TRUNCATE users CASCADE');await restoreUserData(f.pool,backup);
     assert.equal((await f.pool.query('SELECT count(*)::int n FROM sessions')).rows[0].n,0);
     assert.deepEqual((await exportUserData(f.pool,LOCAL_USER_ID)).data,backup.data);
-    const l=await f.app.inject({method:'POST',url:'/api/v1/session',headers:{origin:'http://gateway'},payload:{login_secret:process.env.LOCAL_LOGIN_SECRET}});assert.equal(l.statusCode,200,l.body);const cookie=String(l.headers['set-cookie']).split(';')[0];
+    const l=await f.app.inject({method:'POST',url:'/api/v1/session',headers:{origin:'http://gateway-test'},payload:{login_secret:process.env.LOCAL_LOGIN_SECRET}});assert.equal(l.statusCode,200,l.body);const cookie=String(l.headers['set-cookie']).split(';')[0];
     const replay=await f.request('PATCH','profile',payload,key,{cookie});assert.deepEqual(replay.json(),original.json());
     assert.deepEqual((await exportUserData(f.pool,LOCAL_USER_ID)).data,backup.data);
     await assert.rejects(restoreUserData(f.pool,backup),{code:'NON_EMPTY_TARGET'});

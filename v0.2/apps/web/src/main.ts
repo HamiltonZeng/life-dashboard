@@ -1,3 +1,8 @@
+import {handleTaskEvent} from './task-events.js';
+import {handleTrendEvent} from './trend-events.js';
+import {handleWalletEvent} from './wallet-events.js';
+import {submitObservation} from './observation-submit.js';
+import {PeriodicSync} from './periodic-sync.js';
 import {submitPhase2Command} from './phase2-submit.js';
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
@@ -5,8 +10,7 @@ import {
   createStaticAvatarRenderer,
   DASHBOARD_STYLES,
   escapeHtml,
-  renderIcon,
-  TREND_RANGE_META
+  renderIcon
 } from '../../../packages/ui/src/index.js';
 import { api, ApiClientError, generateUuid, isUnknownNetworkError } from './api.js';
 import {
@@ -91,7 +95,6 @@ import type {
   ConfigMutationKind,
   Field,
   HomePreferencesInput,
-  ObservationWriteInput,
   PanelKey,
   PanelRoute,
   ProfileData,
@@ -104,14 +107,15 @@ import type {
   TaskRow,
   TaskTemplateInput,
   TaskTemplatePatch,
-  TrendGrain,
   TrendPin,
-  TrendRange,
   TypedTaskPin
 } from './types.js';
 
 const state: AppState = createInitialState();
 export const avatarRenderer = createStaticAvatarRenderer();
+const periodic=new PeriodicSync({state:(status,message)=>{state.periodicSync={status,message};},refresh:async()=>{state.bootstrap=await api.getBootstrap();await Promise.all([syncHomeAndProfileQuietly(),syncPhase2DomainQuietly()]);}});
+async function refreshPeriodic(force=false){try{await periodic.ensure(force);}catch{}if(state.authStatus==='authenticated')renderApp({preserveModalInput:true});}
+
 
 function persistUiState(): void {
   saveUiPreferences({
@@ -446,6 +450,7 @@ function navigateTo(
     window.history.pushState({ route }, '', route);
   }
   renderApp();
+  if(state.authStatus==='authenticated'&&['/','/tasks','/records'].includes(route))void refreshPeriodic(true);
   const key = routeToPanelKey(route);
   const targetScroll = key ? state.panels[key].scrollY : 0;
   window.scrollTo({ top: targetScroll, behavior: 'instant' as ScrollBehavior });
@@ -458,7 +463,7 @@ function renderLoginScreen(): string {
         <span class="ld-brand-emblem">L</span>
         <div>
           <h1 style="margin:0;font-size:18px;font-weight:700;">人生面板 Life Dashboard</h1>
-          <div style="font-size:12px;color:var(--ld-text-secondary);">v0.1 · 本机单用户记录</div>
+          <div style="font-size:12px;color:var(--ld-text-secondary);">v0.2 · 本机单用户记录</div>
         </div>
       </div>
       <p style="margin:0;font-size:13px;color:var(--ld-text-secondary);line-height:1.6;">
@@ -602,6 +607,7 @@ function renderShellAndMain(): string {
 
     <div id="ld-main-region" style="flex:1;min-width:0;display:flex;flex-direction:column;">
       ${state.phase2LoadError?`<div class="ld-error-banner" role="alert">${escapeHtml(state.phase2LoadError)}<button class="ld-btn" data-action="retry-phase2">重试</button></div>`:''}
+    ${state.periodicSync?.status==='syncing'?'<div role="status" data-periodic-status="syncing">正在确认完整当期任务集合…</div>':state.periodicSync?.status==='error'?`<div class="ld-error-banner" role="alert" data-periodic-status="error">当期任务尚未确认：${escapeHtml(state.periodicSync.message??'刷新失败')}<button type="button" class="ld-btn" data-action="task-materialize-current">重试周期刷新</button></div>`:''}
     ${mainContentHtml}
     </div>
 
@@ -669,14 +675,6 @@ async function syncHomeAndProfileQuietly(): Promise<void> {
     }
     syncProfileFormFromServer(state, home.profile);
   } catch (err) {
-    if (err instanceof ApiClientError && err.status === 404) {
-      const fallback = buildFallbackHomeFromBootstrap(state, state.bootstrap);
-      state.home = fallback;
-      state.profile = fallback.profile;
-      state.homePreferences = fallback.preferences;
-      syncProfileFormFromServer(state, fallback.profile);
-      return;
-    }
     throw err;
   }
 }
@@ -742,10 +740,7 @@ async function refreshBootstrapAndNotify(
   );
   const fresh = await api.getBootstrap();
   state.bootstrap = fresh;
-  await Promise.allSettled([
-    syncHomeAndProfileQuietly(),
-    syncPhase2DomainQuietly()
-  ]);
+  await refreshPeriodic(true);
   state.error = null;
 
   renderApp({ preserveModalInput });
@@ -1005,10 +1000,7 @@ async function initializeApp(): Promise<void> {
     const me = await api.getMe();
     state.user = me;
     state.bootstrap = await api.getBootstrap();
-    await Promise.allSettled([
-      syncHomeAndProfileQuietly(),
-      syncPhase2DomainQuietly()
-    ]);
+    await refreshPeriodic(true);
     const savedProfileDraft = loadProfileDraft();
     if (savedProfileDraft) {
       state.profileForm = {
@@ -1147,6 +1139,9 @@ async function updateHomePreferencesReliably(
 }
 
 function setupEventDelegation(): void {
+  window.addEventListener('focus',()=>{if(state.authStatus==='authenticated')void refreshPeriodic(true);});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.authStatus==='authenticated')void refreshPeriodic(true);});
+  window.setInterval(()=>{if(document.visibilityState==='visible'&&state.authStatus==='authenticated')void refreshPeriodic();},30000);
   window.addEventListener('beforeunload', e => {
     if (state.profileForm.dirty) {
       e.preventDefault();
@@ -1162,6 +1157,7 @@ function setupEventDelegation(): void {
     }
     state.route = nextRoute;
     renderApp();
+    if(state.authStatus==='authenticated'&&['/','/tasks','/records'].includes(nextRoute))void refreshPeriodic(true);
   });
 
   document.addEventListener('keydown',e=>{const t=(e.target as Element)?.closest<HTMLElement>('.ld-trend-point');if(t&&(e.key==='Enter'||e.key===' ')){e.preventDefault();t.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});
@@ -2261,192 +2257,9 @@ function setupEventDelegation(): void {
       return;
     }
 
-    if (action === 'task-materialize-current') {
-      try {
-        await submitPhase2Command('create-task-template','phase2:materialize','materialize',{},(_p,key)=>api.materializeTaskInstances(undefined,key));
-        await refreshBootstrapAndNotify('已确保并刷新当前周期任务实例');
-      } catch (err) {
-        handleApiError(err);
-      }
-      return;
-    }
+    if(await handleTaskEvent(action,target,phase2Context(data)))return;
 
-    if (action === 'open-create-task-template') {
-      prepareConfigFormModal('create-task-template', {
-        kind: 'create-task-template',
-        defaultModuleId: state.panels.tasks.moduleId
-      });
-      renderApp();
-      return;
-    }
-
-    if (action === 'open-edit-task-template') {
-      const templateId = target.getAttribute('data-template-id') ?? '';
-      if (!templateId) return;
-      state.modalError = null;
-      state.activeModal = { kind: 'edit-task-template', templateId };
-      renderApp();
-      return;
-    }
-
-    if (action === 'open-revoke-task') {
-      const taskId = target.getAttribute('data-task-id') ?? '';
-      if (!taskId) return;
-      state.modalError = null;
-      state.activeModal = { kind: 'revoke-task', taskId, mode: 'revoke' };
-      renderApp();
-      return;
-    }
-
-    if (action === 'open-cancel-task') {
-      const taskId = target.getAttribute('data-task-id') ?? '';
-      if (!taskId) return;
-      state.modalError = null;
-      state.activeModal = { kind: 'revoke-task', taskId, mode: 'cancel' };
-      renderApp();
-      return;
-    }
-
-    if (action === 'task-toggle-typed-pin') {
-      const pinKind = (target.getAttribute('data-pin-kind') ?? 'instance') as 'template' | 'instance';
-      const pinId = target.getAttribute('data-pin-id') ?? '';
-      if (!pinId) return;
-      const current = [...(state.homePreferences?.task_pins ?? [])];
-      const exists = current.some(p => p.kind === pinKind && p.id === pinId);
-      const next = exists ? current.filter(p => !(p.kind === pinKind && p.id === pinId)) : [...current, {kind:pinKind,id:pinId}];
-      if(next.length>5){pushToast('固定数量已满','最多固定5项任务，请先取消其他固定','warning');return;}
-      await updateHomePreferencesReliably({task_pins:next},exists?'已取消首页固定':'已固定到首页');
-      return;
-    }
-
-    if (action === 'trend-set-range') {
-      const metricId = target.getAttribute('data-metric-id') ?? '';
-      const nextRange = (target.getAttribute('data-range') ?? 'last_7_days') as TrendRange;
-      if (!metricId) return;
-      if (!state.metricTrendControls[metricId]) {
-        state.metricTrendControls[metricId] = createInitialTrendControlState();
-      }
-      const ctrl = state.metricTrendControls[metricId];
-      ctrl.range = nextRange;
-      const allowed = TREND_RANGE_META[nextRange]?.grains ?? ['1d'];
-      if (!allowed.includes(ctrl.grain)) {
-        ctrl.grain = TREND_RANGE_META[nextRange]?.defaultGrain ?? allowed[0] ?? '1d';
-      }
-      ctrl.selectedPointKey = null;
-      await syncMetricTrendQuietly(metricId);
-      renderApp({ preserveModalInput: true });
-      return;
-    }
-
-    if (action === 'trend-set-grain') {
-      const metricId = target.getAttribute('data-metric-id') ?? '';
-      const nextGrain = (target.getAttribute('data-grain') ?? '1d') as TrendGrain;
-      if (!metricId) return;
-      if (!state.metricTrendControls[metricId]) {
-        state.metricTrendControls[metricId] = createInitialTrendControlState();
-      }
-      const ctrl = state.metricTrendControls[metricId];
-      ctrl.grain = nextGrain;
-      ctrl.selectedPointKey = null;
-      await syncMetricTrendQuietly(metricId);
-      renderApp({ preserveModalInput: true });
-      return;
-    }
-
-    if (action === 'trend-toggle-variance') {
-      const metricId = target.getAttribute('data-metric-id') ?? '';
-      if (!metricId) return;
-      if (!state.metricTrendControls[metricId]) {
-        state.metricTrendControls[metricId] = createInitialTrendControlState();
-      }
-      const ctrl = state.metricTrendControls[metricId];
-      ctrl.varianceEnabled = !ctrl.varianceEnabled;
-      if (ctrl.varianceEnabled) {
-        ctrl.includeAll = false;
-      }
-      await syncMetricTrendQuietly(metricId);
-      renderApp({ preserveModalInput: true });
-      return;
-    }
-
-    if (action === 'trend-toggle-include-all') {
-      const metricId = target.getAttribute('data-metric-id') ?? '';
-      if (!metricId) return;
-      if (!state.metricTrendControls[metricId]) {
-        state.metricTrendControls[metricId] = createInitialTrendControlState();
-      }
-      const ctrl = state.metricTrendControls[metricId];
-      ctrl.includeAll = !ctrl.includeAll;
-      await syncMetricTrendQuietly(metricId);
-      renderApp({ preserveModalInput: true });
-      return;
-    }
-
-    if (action === 'trend-toggle-exclude-date') {
-      const metricId = target.getAttribute('data-metric-id') ?? '';
-      const dateStr = target.getAttribute('data-date') ?? '';
-      if (!metricId || !dateStr) return;
-      if (!state.metricTrendControls[metricId]) {
-        state.metricTrendControls[metricId] = createInitialTrendControlState();
-      }
-      const ctrl = state.metricTrendControls[metricId];
-      if (ctrl.excludeDates.includes(dateStr)) {
-        ctrl.excludeDates = ctrl.excludeDates.filter(d => d !== dateStr);
-      } else {
-        ctrl.excludeDates = [...ctrl.excludeDates, dateStr];
-        ctrl.includeAll = false;
-      }
-      await syncMetricTrendQuietly(metricId);
-      renderApp({ preserveModalInput: true });
-      return;
-    }
-
-    if (action === 'trend-select-point') {
-      const metricId = target.getAttribute('data-metric-id') ?? '';
-      const bucketKey = target.getAttribute('data-point-key') ?? '';
-      if (!metricId || !bucketKey) return;
-      if (!state.metricTrendControls[metricId]) {
-        state.metricTrendControls[metricId] = createInitialTrendControlState();
-      }
-      state.metricTrendControls[metricId].selectedPointKey = bucketKey;
-      renderApp({ preserveModalInput: true });
-      return;
-    }
-
-    if (action === 'trend-bucket-sources') {
-      const metricId = target.getAttribute('data-metric-id') ?? '';
-      const bucketKey = target.getAttribute('data-point-key') ?? '';
-      const m = data.metrics.find(x => x.id === metricId);
-      const trend = state.metricTrends[metricId];
-      const bucket = trend?.buckets.find(b => `${b.start_date}..${b.end_date}` === (bucketKey||state.metricTrendControls[metricId]?.selectedPointKey)) ?? trend?.buckets.at(-1);
-      if (!m || !bucket) return;
-      saveCurrentScroll();
-      state.returnContext = {
-        fromRoute: state.route,
-        fromPanelKey: routeToPanelKey(state.route) ?? 'home',
-        savedFilter: { ...state.panels.metrics },
-        label: `来自数值趋势「${m.definition.name} · ${bucket.start_date} ~ ${bucket.end_date}」的来源记录`
-      };
-      state.panels.records.moduleId = m.module_id;
-      state.panels.records.recordTemplateId = m.record_type_id;
-      state.panels.records.sourceRecordIds = [...bucket.source_record_ids];
-      state.panels.records.sourceLabel = `数值趋势「${m.definition.name} · ${bucket.start_date} ~ ${bucket.end_date}」的 ${bucket.source_record_ids.length} 条来源记录`;
-      state.activeModal = null;
-      navigateTo('/records', { preserveReturnContext: true });
-      return;
-    }
-
-    if (action === 'trend-toggle-pin') {
-      const metricId = target.getAttribute('data-metric-id') ?? '';
-      if (!metricId) return;
-      const ctrl=state.metricTrendControls[metricId]??createInitialTrendControlState();
-      const current=[...(state.homePreferences?.pinned_trends??[])];
-      const exists=current.some(p=>p.metric_id===metricId);
-      if(!exists&&current.length>=2){pushToast('固定数量已满','最多固定两张趋势，请先取消其他趋势','warning');return;}
-      const next=exists?current.filter(p=>p.metric_id!==metricId):[...current,{metric_id:metricId,range:ctrl.range,grain:ctrl.grain,precision:ctrl.precision,view_filter:{exclude_dates:[...ctrl.excludeDates],variance_enabled:ctrl.varianceEnabled,variance_threshold:ctrl.varianceThreshold,minimum_days:ctrl.minimumDays,include_all:ctrl.includeAll}}];
-      await updateHomePreferencesReliably({pinned_trends:next},exists?'已取消固定趋势':'已固定当前范围、粒度和筛选');
-      return;
-    }
+    if(await handleTrendEvent(action,target,phase2Context(data)))return;
 
     if (action === 'open-create-achievement-series') {
       prepareConfigFormModal('create-achievement-series', {
@@ -2557,40 +2370,10 @@ function setupEventDelegation(): void {
     if(action==='retry-phase2'){await syncPhase2DomainQuietly();renderApp();return;}
     if(action==='trend-retry'){const id=target.getAttribute('data-metric-id');if(id)await syncMetricTrendQuietly(id);renderApp();return;}
     if(action==='template-adopt-baseline'){state.taskTemplates=await api.getTaskTemplates();state.modalError=null;renderApp({preserveModalInput:true});return;}
+    if(action==='observation-adopt-binding'){const obs=state.observationForm;if(!obs?.bindingConflict)return;const fresh=await api.getProfile();const f=fresh.module_fields.find(f=>f.id===obs.fieldId);if(!f)return;state.profile=fresh;state.profileForm=createInitialProfileFormState(fresh);obs.bindingFingerprint=f.binding_fingerprint;obs.bindingSnapshot={binding:{record_type_id:f.binding!.record_type_id!,field_key:f.binding!.field_key!},type:f.type,unit:f.unit};obs.bindingConflict=undefined;obs.conflictError=null;obs.validationError=null;obs.entityId=generateUuid();obs.sourceBaseVersion=null;obs.sourceRecordId='';obs.mode='new';obs.lastImpactSummary='已明确采用最新绑定；请检查类型、单位和必填上下文后保存。';renderApp();return;}
     if(action==='observation-adopt-baseline'){const obs=state.observationForm;if(!obs)return;const fresh=await api.getBootstrap();const r=fresh.records.find(r=>r.id===obs.sourceRecordId);if(!r){pushToast('来源不可用','来源记录已删除，请关闭后选择新增观测','warning');return;}state.bootstrap=fresh;obs.sourceBaseVersion=r.version;obs.conflictError=null;obs.submissionStatus='saved_local';renderApp();return;}
-    if (action === 'open-wallet-ledger') {
-      const taskIdFilter = target.getAttribute('data-task-id') || null;
-      state.walletLedgerTaskFilter = taskIdFilter;state.walletLedgerOffset=0;await syncPhase2DomainQuietly();
-      state.modalError = null;
-      state.activeModal = { kind: 'wallet-ledger', taskId:taskIdFilter };
-      renderApp();
-      return;
-    }
+    if(await handleWalletEvent(action,target,phase2Context(data)))return;
 
-    if (action === 'wallet-clear-task-filter') {
-      state.walletLedgerTaskFilter = null;state.walletLedgerOffset=0;await syncPhase2DomainQuietly();
-      if (state.activeModal?.kind === 'wallet-ledger') {
-        state.activeModal = { kind: 'wallet-ledger', taskId:null };
-      }
-      renderApp();
-      return;
-    }
-
-    if (action === 'wallet-go-task') {
-      const taskId = target.getAttribute('data-task-id') ?? '';
-      if (!taskId) return;
-      saveCurrentScroll();
-      state.returnContext = {
-        fromRoute: state.route,
-        fromPanelKey: routeToPanelKey(state.route) ?? 'home',
-        savedFilter: { ...state.panels.tasks },
-        label: '来自奖励账本流水的来源任务核查'
-      };
-      state.panels.tasks.selectedId = taskId;
-      state.activeModal = { kind: 'task-detail', taskId };
-      navigateTo('/tasks', { preserveReturnContext: true });
-      return;
-    }
   });
 
   document.addEventListener('submit', async e => {
@@ -2615,10 +2398,7 @@ function setupEventDelegation(): void {
         state.user = me;
         state.capabilities = capabilities;
         state.bootstrap = bootstrap;
-        await Promise.allSettled([
-          syncHomeAndProfileQuietly(),
-          syncPhase2DomainQuietly()
-        ]);
+        await refreshPeriodic(true);
         state.authStatus = 'authenticated';
         state.loading = false;
         renderApp();
@@ -3495,38 +3275,12 @@ function setupEventDelegation(): void {
       return;
     }
 
-    if (form.id === 'ld-form-write-observation') {
-      const obs=state.observationForm;if(!obs)return;
-      const fd=new FormData(form),field=(state.profile?.module_fields??[]).find(f=>f.id===obs.fieldId);
-      if(!field)return;
-      const key=`phase2:observation:${field.id}`;
-      const mode=String(fd.get('obs_mode')??'new');
-      const value=String(fd.get('value')??'').trim();
-      const context_values:Record<string,string|number|boolean|null>={};
-      const tpl=data.record_types.find(t=>t.id===field.binding?.record_type_id);
-      for(const f of tpl?.fields??[]){if(f.key===field.binding?.field_key)continue;const raw=fd.get('ctx_'+f.key);if(raw===null)continue;const v=String(raw);context_values[f.key]=f.type==='integer'?Number(v):f.type==='boolean'?v==='true':v;}
-      obs.rawValue=value;obs.occurredAt=String(fd.get('occurred_at')??'');obs.timezone=String(fd.get('timezone')??'');obs.mode=mode==='correct'?'correct':'new';
-      obs.contextValues=Object.fromEntries(Object.entries(context_values).map(([k,v])=>[k,String(v)]));
-      const payload:ObservationWriteInput={id:obs.entityId,field_id:field.id,occurred_at:obs.occurredAt,timezone:obs.timezone,value:field.type==='integer'?Number(value):value,context_values};
-      if(mode==='correct'){payload.source_record_id=String(fd.get('source_record_id')??'');payload.source_base_version=Number(fd.get('source_base_version'));}
-      const draft=extractConfigFormDraft(form,state);if(draft&&!saveConfigDraft(draft)){obs.validationError={code:'LOCAL_STORAGE_FAILED',message:getStorageIssue()??'未保存本机，尚未发送'};renderModalRegionOnly(true);return;}
-      state.submittingModal=true;obs.submissionStatus='submitting';obs.validationError=null;obs.conflictError=null;renderModalRegionOnly(true);
-      try{
-        const saved=await submitPhase2Command('write-observation',key,obs.entityId,payload,(p,key)=>api.writeProfileObservation(p,key));
-        obs.submissionStatus='confirmed_server';obs.operationId=null;
-        if(saved.hadNewEdits){obs.entityId=generateUuid();if(draft)saveConfigDraft({...draft,entityId:obs.entityId});obs.lastImpactSummary='上次提交已确认；你后来编辑的内容仍未提交。请核对后再次保存。';}
-        else{clearConfigDraft('observation:'+field.id);state.activeModal=null;state.observationForm=null;}
-        await refreshBootstrapAndNotify(saved.hadNewEdits?'已确认上次观测，后续编辑尚未提交':'观测来源记录已保存，相关数值、任务、成就和钱包已重算',true,true);
-      }catch(error){
-        const d=describeApiError(error);obs.submissionStatus=isUnknownNetworkError(error)?'unknown_network':error instanceof ApiClientError&&error.status===409?'conflict_pending':'validation_error';
-        if(obs.submissionStatus==='conflict_pending')obs.conflictError={code:d.code??'VERSION_CONFLICT',message:d.message};else obs.validationError={code:d.code??'ERROR',message:d.message};
-        obs.operationId=getPendingConfigMutation(key)?.operationId??null;
-        renderModalRegionOnly(true);
-      }finally{state.submittingModal=false;renderModalRegionOnly(true);}
-      return;
-    }
+    if (form.id === 'ld-form-write-observation') {await submitObservation(form,phase2Context(data));return;}
   });
 }
+
+function phase2Context(data:NonNullable<AppState['bootstrap']>){return {state,data,refreshPeriodic,pushToast,handleApiError,prepareConfigFormModal,renderApp,updateHomePreferencesReliably,syncMetricTrendQuietly,saveCurrentScroll,navigateTo,syncPhase2DomainQuietly,persistUiState,renderModalRegionOnly,refreshBootstrapAndNotify,describeApiError};}
+export type Phase2EventContext=ReturnType<typeof phase2Context>;
 
 setupEventDelegation();
 void initializeApp();

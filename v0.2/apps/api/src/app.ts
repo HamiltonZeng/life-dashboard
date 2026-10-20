@@ -89,8 +89,8 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
     contract_version:CONTRACT_VERSION,profile,stage:profile==='mvp'?'v0.2-phase2':'T2/T3-ai',sync:false,
     cloud_ai:ai?.configSummary().cloud_ai??false,ai_generation:ai!==null,ai_provider:ai?.configSummary().provider??'disabled',
     ai_schema_version:'1.0',ai_preview:ai!==null,
-    home:true,home_preferences:true,profile_fields:true,ai_chat:false,ai_recording:false,ai_profile_update:false,ai_reward_pricing:false,avatar_renderer:false,avatar_redemption:false,
-    recurring_tasks:true,trends:true,achievement_milestones:true,token_wallet:true,profile_observations:true,ai_task_generation:false,ai_metric_analysis:false,ai_achievement_generation:false,professional_ledger:false,local_session:true,user_export:true,user_restore:'cli',
+    app_version:'0.2.0-rc.1',home:true,home_preferences:true,profile_fields:true,ai_chat:false,ai_recording:false,ai_profile_update:false,ai_reward_pricing:false,avatar_renderer:false,avatar_redemption:false,
+    recurring_tasks:true,trends:true,achievement_milestones:true,token_wallet:true,profile_observations:true,observation_binding_precondition:true,ai_task_generation:false,ai_metric_analysis:false,ai_achievement_generation:false,professional_ledger:false,local_session:true,user_export:true,user_restore:'cli',
     aggregations:['count','sum','avg','latest'],windows:['day','week','month','all_time']
   }}));
   const idempotency=(req:any)=>uuid.parse(req.headers['idempotency-key']);

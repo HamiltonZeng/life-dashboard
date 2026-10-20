@@ -24,10 +24,12 @@ export async function createSeries(core:Core,c:Client,user:string,raw:unknown){
 }
 export async function seriesViews(core:Core,c:Client,user:string,facts?:Fact[]){
  const source=facts??await core.facts(c,user),rows=(await c.query('SELECT s.* FROM achievement_series s JOIN modules m ON m.id=s.module_id AND m.user_id=s.user_id WHERE s.user_id=$1 AND m.status=\'enabled\' ORDER BY s.created_at,s.id',[user])).rows;
+ const milestonesAll=(await c.query('SELECT * FROM series_milestones WHERE user_id=$1 ORDER BY threshold,id',[user])).rows;
+ const awardsAll=(await c.query('SELECT * FROM series_awards WHERE user_id=$1',[user])).rows;
  const result=[];
  for(const row of rows){
-  const milestones=(await c.query('SELECT * FROM series_milestones WHERE user_id=$1 AND series_id=$2 ORDER BY threshold,id',[user,row.id])).rows;
-  const awards=(await c.query('SELECT * FROM series_awards WHERE user_id=$1 AND series_id=$2',[user,row.id])).rows;
+  const milestones=milestonesAll.filter(m=>m.series_id===row.id);
+  const awards=awardsAll.filter(a=>a.series_id===row.id);
   result.push({...row,progress:seriesProgress(row,source,core.now()),milestones:milestones.map(m=>({...m,threshold:new Decimal(m.threshold).toString(),award:awards.find(a=>a.milestone_id===m.id)??null}))});
  }
  return result;

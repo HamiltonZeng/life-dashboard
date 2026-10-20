@@ -75,6 +75,9 @@ export interface TrendControlState {
 }
 
 export interface ObservationFormRuntimeState {
+  bindingFingerprint?:string;
+  bindingSnapshot?:{binding:{record_type_id:string;field_key:string};type:string;unit:string|null};
+  bindingConflict?:{binding_fingerprint:string;module_id:string;type:string;unit:string|null;binding:{record_type_id:string;field_key:string}};
   fieldId: string;
   mode: 'new' | 'correct';
   occurredAt: string;
@@ -100,6 +103,7 @@ export interface TaskFilterState {
 }
 
 export interface AppState {
+  periodicSync?:{status:'syncing'|'ready'|'error';message?:string};
   authStatus: 'checking' | 'unauthenticated' | 'authenticated';
   user: UserProfile | null;
   capabilities: CapabilitiesData | null;

@@ -33,17 +33,19 @@ export async function templateView(c:Client,user:string,id:string){
  const instance=(await c.query('SELECT task_id FROM task_instance_details WHERE user_id=$1 AND template_id=$2 ORDER BY period_start DESC LIMIT 1',[user,id])).rows[0];
  return {...row,current_instance_id:instance?.task_id??null};
 }
-export async function rewardSummaryFor(c:Client,user:string,task:string,details?:any){
- if(!details)return {policy_version:null,candidate_amount:'0',net_amount:'0',eligibility:'legacy',quota_period:null,reversed:false};
- const q=(await c.query('SELECT * FROM reward_qualifications WHERE user_id=$1 AND task_id=$2',[user,task])).rows[0];
- const net=(await c.query('SELECT coalesce(sum(amount),0)::text amount FROM wallet_ledger WHERE user_id=$1 AND task_id=$2',[user,task])).rows[0].amount;
- return {policy_version:details.reward_policy_version,candidate_amount:String(details.reward_candidate),net_amount:net,eligibility:q?(q.eligible?'eligible':q.denial_reason):'pending',quota_period:q?.quota_period??details.quota_period,reversed:Boolean(q?.eligible&&q.original_grant_id&&net==='0')};
+function taskView(t:any,d:any,q:any,net:string){
+ const date=(v:any)=>v?new Date(v).toISOString():null;
+ return {...t,category:d?.category??'main',color:d?.snapshot.color??'blue',template_version:d?.template_version??t.rule_version,period:d?{key:d.period_key,start:date(d.period_start),end:date(d.period_end),timezone:d.snapshot.timezone}:null,locked_rule:d?.snapshot.rule??null,progress:d?.progress??null,reward_summary:d?{policy_version:d.reward_policy_version,candidate_amount:String(d.reward_candidate),net_amount:net,eligibility:q?(q.eligible?'eligible':q.denial_reason):'pending',quota_period:q?.quota_period??d.quota_period,reversed:Boolean(q?.eligible&&q.original_grant_id&&net==='0')}:{policy_version:null,candidate_amount:'0',net_amount:'0',eligibility:'legacy',quota_period:null,reversed:false}};
 }
-export async function instanceView(c:Client,user:string,id:string){
- const t=(await c.query('SELECT * FROM tasks WHERE user_id=$1 AND id=$2',[user,id])).rows[0];requireThat(t,'NOT_FOUND','Task not found',404);
- const d=(await c.query('SELECT * FROM task_instance_details WHERE user_id=$1 AND task_id=$2',[user,id])).rows[0];
- return {...t,category:d?.category??'main',color:d?.snapshot.color??'blue',template_version:d?.template_version??t.rule_version,period:d?{key:d.period_key,start:d.period_start.toISOString(),end:d.period_end?.toISOString()??null,timezone:d.snapshot.timezone}:null,locked_rule:d?.snapshot.rule??null,progress:d?.progress??null,reward_summary:await rewardSummaryFor(c,user,id,d)};
+export async function instanceViews(c:Client,user:string,ids?:string[]){
+ const rows=(await c.query('SELECT t.*,to_jsonb(d) details FROM tasks t LEFT JOIN task_instance_details d ON d.user_id=t.user_id AND d.task_id=t.id WHERE t.user_id=$1 AND ($2::uuid[] IS NULL OR t.id=ANY($2)) ORDER BY t.created_at,t.id',[user,ids??null])).rows;
+ if(!rows.length)return [];
+ const selected=rows.map(t=>t.id);
+ const qs=new Map((await c.query('SELECT * FROM reward_qualifications WHERE user_id=$1 AND task_id=ANY($2::uuid[])',[user,selected])).rows.map(q=>[q.task_id,q]));
+ const nets=new Map((await c.query('SELECT task_id,sum(amount)::text amount FROM wallet_ledger WHERE user_id=$1 AND task_id=ANY($2::uuid[]) GROUP BY task_id',[user,selected])).rows.map(r=>[r.task_id,r.amount]));
+ return rows.map(({details,...t})=>taskView(t,details,qs.get(t.id),nets.get(t.id)??'0'));
 }
+export async function instanceView(c:Client,user:string,id:string){const row=(await instanceViews(c,user,[id]))[0];requireThat(row,'NOT_FOUND','Task not found',404);return row;}
 export async function materializeOne(core:Core,c:Client,user:string,templateId:string){
  let t=await templateView(c,user,templateId);requireThat(t.status==='enabled','TEMPLATE_INACTIVE','Template is archived',409);await core.module(c,user,t.module_id);
  const now=core.now(),last=(await c.query('SELECT * FROM task_instance_details WHERE user_id=$1 AND template_id=$2 ORDER BY period_start DESC LIMIT 1',[user,templateId])).rows[0];
@@ -91,8 +93,8 @@ export async function executeTasks(core:Core,c:Client,user:string,method:string,
   await core.event(c,user,'task_template',id,row.version,row);return {template:await templateView(c,user,id),instance:old.current_instance_id?await instanceView(c,user,old.current_instance_id):null};
  }
  if(path==='task-instances/materialize'&&method==='POST'){
-  const d=schema.materializeInput.parse(raw);const ids=d.template_ids??(await c.query("SELECT t.id FROM task_templates t JOIN modules m ON m.id=t.module_id AND m.user_id=t.user_id WHERE t.user_id=$1 AND t.phase2 AND t.status='enabled' AND m.status='enabled' ORDER BY t.created_at,t.id LIMIT 50",[user])).rows.map(r=>r.id);
-  const results=[];for(const id of ids)results.push(await materializeOne(core,c,user,id));return {instances:results.map(r=>r.instance),reused:results.map(r=>r.reused)};
+  const d=schema.materializeInput.parse(raw);const ids=d.template_ids??(await c.query("SELECT t.id FROM task_templates t JOIN modules m ON m.id=t.module_id AND m.user_id=t.user_id WHERE t.user_id=$1 AND t.phase2 AND t.status='enabled' AND m.status='enabled' ORDER BY t.created_at,t.id",[user])).rows.map(r=>r.id);
+  const results=[];for(const id of ids)results.push(await materializeOne(core,c,user,id));const ends=results.map(r=>r.instance.period?.end).filter((v:any)=>v&&Date.parse(v)>core.now().getTime()).sort();return {instances:results.map(r=>r.instance),reused:results.map(r=>r.reused),total_templates:ids.length,server_time:core.now().toISOString(),next_check_at:ends[0]??null,scope:d.template_ids?'explicit':'all'};
  }
  if(kind==='tasks'&&id&&method==='POST'&&['complete','revoke','cancel'].includes(action)){
   const detail=(await c.query('SELECT * FROM task_instance_details WHERE user_id=$1 AND task_id=$2',[user,id])).rows[0];if(!detail){if(action==='revoke')throw new DomainError('INVALID_TASK_TRANSITION','Only new manual completions can be revoked',409);return undefined;}

@@ -12,10 +12,11 @@ export function calculateTrend(metric:{id:string;version:number;definition:Metri
  const today=DateTime.fromJSDate(now,{zone}).startOf('day');
  const start=q.range==='last_7_days'?today.minus({days:6}):today.startOf(q.range==='month'?'month':q.range==='quarter'?'quarter':'year');
  const finish=today.plus({days:1});
- const selected=facts.filter(f=>f.record_type_id===def.record_type_id&&Date.parse(f.occurred_at)>=start.toMillis()&&Date.parse(f.occurred_at)<=now.getTime());
+ const startMs=start.toMillis(),nowMs=now.getTime(),byDay=new Map<string,Fact[]>(),byId=new Map(facts.map(f=>[f.id,f]));
+ for(const f of facts){const time=Date.parse(f.occurred_at);if(f.record_type_id!==def.record_type_id||time<startMs||time>nowMs)continue;const date=DateTime.fromISO(f.occurred_at,{zone}).toISODate()!;const group=byDay.get(date)??[];group.push(f);byDay.set(date,group);}
  const daily:any[]=[];
  for(let day=start;day<finish;day=day.plus({days:1})){
-  const value=calculateMetric({...def,window:'day'},selected,day.toJSDate());
+  const value=calculateMetric({...def,window:'day'},byDay.get(day.toISODate()!)??[],day.toJSDate());
   daily.push({date:day.toISODate()!,value:value.value,display_value:display(value.value,precision),source_record_ids:value.source_record_ids,excluded:false,marked_for_exclusion:false,exclusion_reasons:[] as string[]});
  }
  const requested=q.exclude_dates?q.exclude_dates.split(','):[];
@@ -44,7 +45,7 @@ export function calculateTrend(metric:{id:string;version:number;definition:Metri
   day=idealEnd;
  }
  const refs=[...new Set(daily.flatMap(p=>p.source_record_ids))] as string[];
- return {metric_id:metric.id,metric_version:metric.version,range:q.range,grain,precision,timezone:zone,start_date:start.toISODate()!,end_date:today.toISODate()!,aggregation:def.aggregation,unit:def.unit,daily_values:daily,buckets,coverage:{valid_days:valid.length,expected_days:daily.length,included_days:valid.filter(p=>!p.excluded).length},exclusions:{manual_dates:manual,automatic_dates:automatic,applied_dates:[...applied].sort(),fallback_reason:fallback},source_refs:refs.map(id=>({record_id:id,version:(facts.find(f=>f.id===id) as any)?.version??null})),view_filter:{exclude_dates:manual,variance_enabled:q.variance_enabled==='true',variance_threshold:q.variance_threshold,minimum_days:q.minimum_days,include_all:q.include_all==='true'},calculation_version:1};
+ return {metric_id:metric.id,metric_version:metric.version,range:q.range,grain,precision,timezone:zone,start_date:start.toISODate()!,end_date:today.toISODate()!,aggregation:def.aggregation,unit:def.unit,daily_values:daily,buckets,coverage:{valid_days:valid.length,expected_days:daily.length,included_days:valid.filter(p=>!p.excluded).length},exclusions:{manual_dates:manual,automatic_dates:automatic,applied_dates:[...applied].sort(),fallback_reason:fallback},source_refs:refs.map(id=>({record_id:id,version:(byId.get(id) as any)?.version??null})),view_filter:{exclude_dates:manual,variance_enabled:q.variance_enabled==='true',variance_threshold:q.variance_threshold,minimum_days:q.minimum_days,include_all:q.include_all==='true'},calculation_version:1};
 }
 export function pinToQuery(pin:{range:string;grain:string;precision:number;view_filter:any}):TrendQuery{
  const filter=pin.view_filter;

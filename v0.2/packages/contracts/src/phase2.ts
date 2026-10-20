@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {uuid,timezone,decimal,fieldSchema} from './primitives.js';
-export const PHASE2_CONTRACT_VERSION='v0.2-phase2/1.0';
+export const PHASE2_CONTRACT_VERSION='v0.2-phase2/1.1';
 const ids=z.array(uuid).max(50).refine(a=>new Set(a).size===a.length,'Duplicate IDs');
 const scalar=z.union([z.string().max(20000),z.number().finite(),z.boolean(),z.null()]);
 const filters=z.array(z.strictObject({field_key:z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),operator:z.enum(['eq','gte','lte']),value:scalar})).max(5).default([]);
@@ -33,7 +33,7 @@ export const phase2ProfileField=z.discriminatedUnion('kind',[
 ]);
 export const phase2ProfileInput=z.strictObject({base_version:z.int().positive(),nickname:z.string().trim().min(1).max(60).optional(),bio:z.string().max(1000).nullable().optional(),timezone:timezone.optional(),field_upserts:z.array(phase2ProfileField).max(120).optional(),field_remove_ids:z.array(uuid).max(120).optional()});
 export const phase2HomePreferencesInput=z.strictObject({base_version:z.int().positive(),minimal_mode:z.boolean().optional(),pinned_metric_ids:z.array(uuid).max(4).refine(a=>new Set(a).size===a.length).optional(),pinned_task_ids:z.array(uuid).max(5).refine(a=>new Set(a).size===a.length).optional(),task_pins:z.array(typedTaskPin).max(5).optional(),pinned_trends:z.array(trendPin).max(2).optional()});
-export const observationInput=z.strictObject({id:uuid,field_id:uuid,occurred_at:z.iso.datetime({offset:true}),timezone,value:z.union([z.number().finite(),decimal,z.null()]),source_record_id:uuid.optional(),source_base_version:z.int().positive().optional(),context_values:z.record(z.string(),scalar).refine(v=>Object.keys(v).length<=30).default({})});
+export const observationInput=z.strictObject({id:uuid,field_id:uuid,binding_fingerprint:z.string().regex(/^[a-f0-9]{64}$/).optional(),occurred_at:z.iso.datetime({offset:true}),timezone,value:z.union([z.number().finite(),decimal,z.null()]),source_record_id:uuid.optional(),source_base_version:z.int().positive().optional(),context_values:z.record(z.string(),scalar).refine(v=>Object.keys(v).length<=30).default({})});
 export const achievementSeriesInput=z.strictObject({id:uuid,module_id:uuid,name:z.string().trim().min(1).max(80),record_type_id:uuid,aggregation:z.enum(['count','distinct_days','sum']),field_key:z.string().max(64).nullable().default(null),unit:z.string().min(1).max(30),timezone,filters,history_policy:z.enum(['include_existing','from_activation']).default('include_existing'),milestones:z.array(z.strictObject({id:uuid,threshold:decimal,label:z.string().max(80).default('')})).min(1).max(20)});
 export const seriesQuery=z.strictObject({module_id:uuid.optional(),id:uuid.optional(),state:z.enum(['unlocked','needs_review','unstarted']).optional(),limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).max(100000).default(0)});
 export const ledgerQuery=z.strictObject({task_id:uuid.optional(),limit:z.coerce.number().int().min(1).max(100).default(50),offset:z.coerce.number().int().min(0).max(100000).default(0)});
