@@ -35,5 +35,22 @@
   "main_18080_upgraded": false,
   "preview_export_tables_equal": true,
   "baseline_sha": "d9ab4085c05ec121bfe2fd03cd6fac071741b530",
-  "implementation_commit": "3ea9b3a"
+  "implementation_commit": "3ea9b3a",
+  "frozen_checkout": {
+    "status": "PASS",
+    "sha": "13bff27950e57aa3253fe62a352cd1fed9395dec",
+    "browser": "156.0.8078.4",
+    "login_ui": true,
+    "record_ui": true,
+    "exact_replay": true,
+    "one_record_after_reload": true,
+    "viewport_360": true,
+    "real_device": false,
+    "uncaught_errors": []
+  },
+  "temporary_acceptance_containers_removed": 7,
+  "all_containers_removed": 16,
+  "temporary_frozen_checkout_archived": 1,
+  "all_empty_networks_removed": 3,
+  "origin_main_fetched_sha": "c91eee95f41cd3238a8619e75e4675bc9231b98e"
 }

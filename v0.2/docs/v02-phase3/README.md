@@ -27,3 +27,9 @@
 ## 约定延期与未测范围
 
 AI、3D、兑换和同步仍未开放。360px 是 Chromium 触摸/减少动效模拟，未做真实手机、软键盘或移动系统验证。性能是本机 Docker 合成数据的少量样本，不是容量承诺；不代表联网首次安装、跨设备同步或完整断网运行。普通 GitHub 候选分支上传不等于合并 main 或发布正式 Release。
+
+## 冻结目录复验
+
+冻结源码 13bff27950e57aa3253fe62a352cd1fed9395dec 的独立检出已离线复验，结果见 [frozen-check.json](frozen-check.json)。除源文件外，该目录从空私有配置/空PG开始，使用 portable release 入口启动18184。浏览器容器内透明转发到该项目Caddy，页面Origin仍为localhost:18184，未改鉴权或CSRF规则；主机端口另以HTTP验证200/401。`tests/v02-phase3/frozen-smoke.ts` 要求 FROZEN_ACCEPTANCE=fresh-release-only 和完整FROZEN_SHA，且写入前要求空记录集，不会清库。
+
+临时环境验收完已停止移除，私有配置、PG物理目录及日志均归档；18184目前不运行。后续提交仅增加本轮验收和推送记录，产品源码与冻结版本相同。最终候选仍从 Codex/18181 预览，主18080未切换。
