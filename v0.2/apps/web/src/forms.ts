@@ -4,14 +4,26 @@ import { escapeHtml } from '../../../packages/ui/src/index.js';
 import { generateUuid } from './api.js';
 import type { AppState } from './state.js';
 import {
-  clearPendingMutation,
+  buildConfigDraftKey,
   computePayloadSignature,
+  getPendingConfigMutation,
   getPendingMutation,
+  getStorageIssue,
+  loadConfigDraft,
   loadRecordDraft,
+  saveAiDraft,
+  saveConfigDraft,
+  saveProfileDraft,
   saveRecordDraft
-  ,getStorageIssue
 } from './storage.js';
-import type { BootstrapData, PersistedRecordDraft } from './types.js';
+import type {
+  BootstrapData,
+  ConfigMutationKind,
+  PersistedConfigDraft,
+  PersistedRecordDraft,
+  ProfileFieldRow,
+  ProfileFieldType
+} from './types.js';
 
 export interface ActiveFormDomSnapshot {
   formId: string;
@@ -21,11 +33,13 @@ export interface ActiveFormDomSnapshot {
 
 export function captureActiveFormSnapshot(): ActiveFormDomSnapshot | null {
   if (typeof document === 'undefined') return null;
-  const modalForm = document.querySelector('.ld-modal-backdrop form') as HTMLFormElement | null;
-  if (!modalForm || !modalForm.id) return null;
+  const targetForm =
+    (document.querySelector('.ld-modal-backdrop form') as HTMLFormElement | null) ??
+    (document.getElementById('ld-form-profile') as HTMLFormElement | null);
+  if (!targetForm || !targetForm.id) return null;
 
   const valuesBySelector: Array<{ key: string; value: string; checked?: boolean }> = [];
-  const inputs = modalForm.querySelectorAll('input, select, textarea');
+  const inputs = targetForm.querySelectorAll('input, select, textarea');
   inputs.forEach((el, idx) => {
     const fieldKey = el.getAttribute('data-field-key');
     const name = el.getAttribute('name');
@@ -40,7 +54,7 @@ export function captureActiveFormSnapshot(): ActiveFormDomSnapshot | null {
 
     if (el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio')) {
       valuesBySelector.push({
-        key: `${name ?? 'check'}:${el.value}`,
+        key: `${name ?? id ?? 'check'}:${el.value}:${idx}`,
         value: el.value,
         checked: el.checked
       });
@@ -59,7 +73,7 @@ export function captureActiveFormSnapshot(): ActiveFormDomSnapshot | null {
     : null;
 
   return {
-    formId: modalForm.id,
+    formId: targetForm.id,
     valuesBySelector,
     activeElementName
   };
@@ -67,21 +81,21 @@ export function captureActiveFormSnapshot(): ActiveFormDomSnapshot | null {
 
 export function restoreActiveFormSnapshot(snapshot: ActiveFormDomSnapshot | null): void {
   if (!snapshot || typeof document === 'undefined') return;
-  const modalForm = document.getElementById(snapshot.formId) as HTMLFormElement | null;
-  if (!modalForm) return;
+  const targetForm = document.getElementById(snapshot.formId) as HTMLFormElement | null;
+  if (!targetForm) return;
 
   const map = new Map<string, { value: string; checked?: boolean }>();
   for (const item of snapshot.valuesBySelector) {
     map.set(item.key, item);
   }
 
-  const inputs = modalForm.querySelectorAll('input, select, textarea');
+  const inputs = targetForm.querySelectorAll('input, select, textarea');
   inputs.forEach((el, idx) => {
     const fieldKey = el.getAttribute('data-field-key');
     const name = el.getAttribute('name');
     const id = el.id;
     if (el instanceof HTMLInputElement && (el.type === 'checkbox' || el.type === 'radio')) {
-      const k = `${name ?? 'check'}:${el.value}`;
+      const k = `${name ?? id ?? 'check'}:${el.value}:${idx}`;
       const saved = map.get(k);
       if (saved && typeof saved.checked === 'boolean') {
         el.checked = saved.checked;
@@ -183,27 +197,224 @@ export function extractRecordFormDraft(
   };
 }
 
+export function extractConfigFormDraft(
+  form: HTMLFormElement,
+  state: AppState
+): PersistedConfigDraft | null {
+  const kind = form.getAttribute('data-config-kind') as ConfigMutationKind | null;
+  if (!kind) return null;
+  const draftKey = form.getAttribute('data-draft-key') || buildConfigDraftKey(kind);
+  const existingDraft = loadConfigDraft(draftKey);
+  const pendingOp = getPendingConfigMutation(draftKey);
+  const entityId =
+    pendingOp?.entityId ||
+    form.getAttribute('data-entity-id') ||
+    state.configForm.entityId ||
+    existingDraft?.entityId ||
+    generateUuid();
+
+  const rawInputs: Record<string, string> = {};
+  const elements = form.querySelectorAll('input, select, textarea');
+  elements.forEach(el => {
+    const name = el.getAttribute('name');
+    if (!name) return;
+    if (el instanceof HTMLInputElement && el.type === 'checkbox') {
+      rawInputs[name] = el.checked ? 'true' : 'false';
+    } else if (
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLSelectElement ||
+      el instanceof HTMLTextAreaElement
+    ) {
+      rawInputs[name] = el.value;
+    }
+  });
+
+  return {
+    draftKey,
+    kind,
+    entityId,
+    rawInputs,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+export function extractProfileFormToState(form: HTMLFormElement, state: AppState): void {
+  const nicknameInput = form.querySelector<HTMLInputElement>('input[name="nickname"]');
+  const bioInput = form.querySelector<HTMLTextAreaElement>('textarea[name="bio"]');
+  const bioNullCheck = form.querySelector<HTMLInputElement>('input[name="bio_is_null"]');
+  const tzInput = form.querySelector<HTMLInputElement>('input[name="timezone"]');
+
+  if (nicknameInput) state.profileForm.nickname = nicknameInput.value;
+  if (bioInput) state.profileForm.bio = bioInput.value;
+  if (bioNullCheck) state.profileForm.bioIsNull = bioNullCheck.checked;
+  if (tzInput) state.profileForm.timezone = tzInput.value;
+
+  const updatedFields: ProfileFieldRow[] = [];
+  const rows = form.querySelectorAll<HTMLElement>('[data-profile-field-row]');
+  rows.forEach(row => {
+    const id = row.getAttribute('data-profile-field-row') ?? generateUuid();
+    const modEl = row.querySelector<HTMLSelectElement | HTMLInputElement>('[data-pf-prop="module_id"]');
+    const keyEl = row.querySelector<HTMLInputElement>('[data-pf-prop="key"]');
+    const labelEl = row.querySelector<HTMLInputElement>('[data-pf-prop="label"]');
+    const typeEl = row.querySelector<HTMLSelectElement | HTMLInputElement>('[data-pf-prop="type"]');
+    const unitEl = row.querySelector<HTMLInputElement>('[data-pf-prop="unit"]');
+    const optsEl = row.querySelector<HTMLInputElement>('[data-pf-prop="options"]');
+    const valEl = row.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-pf-prop="value"]');
+    const nullEl = row.querySelector<HTMLInputElement>('[data-pf-prop="is_null"]');
+
+    const fType = (typeEl?.value ?? 'text') as ProfileFieldType;
+    const isNull = nullEl ? nullEl.checked : false;
+    const rawVal = valEl ? valEl.value : '';
+    const options = (optsEl?.value ?? '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    let parsedValue: string | number | boolean | null = null;
+    if (!isNull) {
+      if (fType === 'integer') {
+        if (rawVal.trim() === '') parsedValue = null;
+        else {
+          const n = Number.parseInt(rawVal.trim(), 10);
+          parsedValue = Number.isNaN(n) ? (rawVal.trim() as any) : n;
+        }
+      } else if (fType === 'boolean') {
+        if (rawVal === '' || rawVal === 'null') parsedValue = null;
+        else parsedValue = rawVal === 'true';
+      } else if (fType === 'decimal' || fType === 'date' || fType === 'single_select') {
+        parsedValue = rawVal.trim() === '' ? null : rawVal.trim();
+      } else {
+        // text / textarea: allow empty string unless explicitly marked null
+        parsedValue = rawVal;
+      }
+    }
+
+    updatedFields.push({
+      id,
+      module_id: modEl?.value ?? '',
+      key: (keyEl?.value ?? '').trim(),
+      label: (labelEl?.value ?? '').trim(),
+      type: fType,
+      kind: 'profile',
+      value: parsedValue,
+      unit: (unitEl?.value ?? '').trim() || null,
+      options
+    });
+  });
+
+  if (rows.length > 0 || state.profileForm.fields.length === 0) {
+    state.profileForm.fields = updatedFields;
+  }
+
+  const rawInputs: Record<string, string> = {};
+  for (const f of state.profileForm.fields) {
+    if (f.key) {
+      rawInputs[f.key] = f.value === null ? '' : String(f.value);
+    }
+  }
+
+  state.profileForm.dirty = true;
+  state.profileForm.lastSavedMessage = null;
+  const saved = saveProfileDraft({
+    baseVersion: state.profileForm.baseVersion,
+    nickname: state.profileForm.nickname,
+    bio: state.profileForm.bioIsNull ? null : state.profileForm.bio,
+    timezone: state.profileForm.timezone,
+    upserts: state.profileForm.fields,
+    removeIds: state.profileForm.removeIds,
+    rawInputs,
+    updatedAt: new Date().toISOString()
+  });
+
+  if (!saved) {
+    state.profileForm.submissionStatus = 'validation_error';
+    state.profileForm.validationError = {
+      code: 'LOCAL_STORAGE_FAILED',
+      message: getStorageIssue() ?? '未保存本机草稿'
+    };
+  } else if (state.profileForm.submissionStatus !== 'conflict_pending') {
+    state.profileForm.validationError = null;
+    const pending = getPendingConfigMutation(buildConfigDraftKey('profile'));
+    state.profileForm.submissionStatus = pending ? 'unknown_network' : 'saved_local';
+  }
+}
+
 export function bindDynamicModalControllers(
   state: AppState,
   onRerenderModalOnly: () => void,
-  onUpdateStatusBarOnly: () => void
+  onUpdateStatusBarOnly: () => void,
+  onUpdateConfigStatusBarOnly?: () => void,
+  onUpdateProfileStatusBarOnly?: () => void
 ): void {
   const data = state.bootstrap;
-  if (!data || typeof document === 'undefined') return;
+  if (typeof document === 'undefined') return;
+
+  // Bind live local draft persistence on Home & Records disabled AI boxes
+  const aiInputs = document.querySelectorAll<HTMLTextAreaElement>('[data-ai-draft-input]');
+  aiInputs.forEach(textarea => {
+    const scope = (textarea.getAttribute('data-ai-draft-input') ?? 'home') as 'home' | 'records';
+    const handleAiInput = () => {
+      const ok = saveAiDraft(scope, textarea.value);
+      const badge = document.querySelector<HTMLElement>(`[data-ai-draft-status="${scope}"]`);
+      if (badge) {
+        if (!ok) {
+          badge.textContent = getStorageIssue() ?? '未保存本机';
+          badge.className = 'ld-badge ld-badge-danger';
+        } else if (textarea.value.trim().length > 0) {
+          badge.textContent = '已保存本机待发送草稿';
+          badge.className = 'ld-badge ld-badge-info';
+        } else {
+          badge.textContent = '草稿为空';
+          badge.className = 'ld-badge';
+        }
+      }
+    };
+    textarea.addEventListener('input', handleAiInput);
+    textarea.addEventListener('change', handleAiInput);
+  });
+
+  // Bind live local draft tracking on #ld-form-profile
+  const profileForm = document.getElementById('ld-form-profile') as HTMLFormElement | null;
+  if (profileForm) {
+    const handleProfileInput = () => {
+      extractProfileFormToState(profileForm, state);
+      onUpdateProfileStatusBarOnly?.();
+    };
+    profileForm.addEventListener('input', handleProfileInput);
+    profileForm.addEventListener('change', handleProfileInput);
+  }
+
+  if (!data) return;
 
   // Bind live local draft persistence on #ld-form-record
   const recordForm = document.getElementById('ld-form-record') as HTMLFormElement | null;
   if (recordForm) {
-    if(state.submittingModal)recordForm.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>('input,select,textarea').forEach(el=>{el.disabled=true;});
+    if (state.submittingModal) {
+      recordForm
+        .querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+          'input,select,textarea'
+        )
+        .forEach(el => {
+          el.disabled = true;
+        });
+    }
     const handleInput = () => {
       const draft = extractRecordFormDraft(recordForm, state, data);
       if (!draft) return;
-      const saved=saveRecordDraft(draft);
+      const saved = saveRecordDraft(draft);
       state.recordForm.draftKey = draft.draftKey;
       state.recordForm.recordId = draft.recordId;
-      state.recordForm.lastSavedLocalAt = saved?draft.updatedAt:null;
-      if(!saved){state.recordForm.submissionStatus='validation_error';state.recordForm.validationError={code:'LOCAL_STORAGE_FAILED',message:getStorageIssue()??'未保存本机'};onUpdateStatusBarOnly();return;}
-      state.recordForm.validationError=null;
+      state.recordForm.lastSavedLocalAt = saved ? draft.updatedAt : null;
+      if (!saved) {
+        state.recordForm.submissionStatus = 'validation_error';
+        state.recordForm.validationError = {
+          code: 'LOCAL_STORAGE_FAILED',
+          message: getStorageIssue() ?? '未保存本机'
+        };
+        onUpdateStatusBarOnly();
+        return;
+      }
+      state.recordForm.validationError = null;
 
       // An unknown operation stays frozen even while its working draft is edited.
       const pending = getPendingMutation(draft.draftKey);
@@ -216,8 +427,9 @@ export function bindDynamicModalControllers(
           status: draft.status,
           values: draft.values,
           task_ids: draft.taskIds,
-          base_version: draft.baseVersion ?? undefined
-          ,occurred_at:draft.occurredAt,timezone:draft.timezone
+          base_version: draft.baseVersion ?? undefined,
+          occurred_at: draft.occurredAt,
+          timezone: draft.timezone
         });
         if (sig !== pending.payloadSignature) {
           state.recordForm.submissionStatus = 'unknown_network';
@@ -229,6 +441,50 @@ export function bindDynamicModalControllers(
     };
     recordForm.addEventListener('input', handleInput);
     recordForm.addEventListener('change', handleInput);
+  }
+
+  // Bind live local draft persistence on configuration creation forms (P1-03)
+  const configForm = document.querySelector<HTMLFormElement>('form[data-config-kind]');
+  if (configForm) {
+    if (state.submittingModal) {
+      configForm
+        .querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+          'input,select,textarea'
+        )
+        .forEach(el => {
+          el.disabled = true;
+        });
+    }
+    const handleConfigInput = () => {
+      const draft = extractConfigFormDraft(configForm, state);
+      if (!draft) return;
+      const saved = saveConfigDraft(draft);
+      state.configForm.draftKey = draft.draftKey;
+      state.configForm.kind = draft.kind;
+      state.configForm.entityId = draft.entityId;
+      state.configForm.lastSavedLocalAt = saved ? draft.updatedAt : null;
+      if (!saved) {
+        state.configForm.submissionStatus = 'validation_error';
+        state.configForm.validationError = {
+          code: 'LOCAL_STORAGE_FAILED',
+          message: getStorageIssue() ?? '未保存本机'
+        };
+        onUpdateConfigStatusBarOnly?.();
+        return;
+      }
+      state.configForm.validationError = null;
+      const pending = getPendingConfigMutation(draft.draftKey);
+      if (pending) {
+        state.configForm.submissionStatus = 'unknown_network';
+        state.configForm.operationId = pending.operationId;
+        state.configForm.entityId = pending.entityId;
+      } else if (state.configForm.submissionStatus !== 'conflict_pending') {
+        state.configForm.submissionStatus = 'saved_local';
+      }
+      onUpdateConfigStatusBarOnly?.();
+    };
+    configForm.addEventListener('input', handleConfigInput);
+    configForm.addEventListener('change', handleConfigInput);
   }
 
   // Create Task modal dynamic interactions
@@ -360,7 +616,7 @@ export function bindDynamicModalControllers(
   const achMetricSelect = document.getElementById('ld-ach-metric-select') as HTMLSelectElement | null;
   if (achModSelect && achMetricSelect) {
     const syncAchievementMetrics = () => {
-      const selected=achMetricSelect.value;
+      const selected = achMetricSelect.value;
       const metrics = data.metrics.filter(m => m.module_id === achModSelect.value);
       achMetricSelect.innerHTML =
         metrics.length === 0
@@ -371,11 +627,13 @@ export function bindDynamicModalControllers(
                   `<option value="${escapeHtml(m.id)}">${escapeHtml(m.definition.name)} (${escapeHtml(m.definition.unit)})</option>`
               )
               .join('');
-      if(metrics.some(m=>m.id===selected))achMetricSelect.value=selected;
-      const submit=document.querySelector<HTMLButtonElement>('#ld-form-create-achievement button[type=submit]');
-      if(submit)submit.disabled=state.submittingModal||metrics.length===0;
+      if (metrics.some(m => m.id === selected)) achMetricSelect.value = selected;
+      const submit = document.querySelector<HTMLButtonElement>(
+        '#ld-form-create-achievement button[type=submit]'
+      );
+      if (submit) submit.disabled = state.submittingModal || metrics.length === 0;
     };
-    achModSelect.onchange=syncAchievementMetrics;
+    achModSelect.onchange = syncAchievementMetrics;
     syncAchievementMetrics();
   }
 

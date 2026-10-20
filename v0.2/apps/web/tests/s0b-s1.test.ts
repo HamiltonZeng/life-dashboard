@@ -1,5 +1,7 @@
 import {
   AI_BLUEPRINT_SUPPORT_MATRIX,
+  AVATAR_ACTION_IDS,
+  createStaticAvatarRenderer,
   DASHBOARD_STYLES,
   SUBMISSION_STATE_META
 } from '../../../packages/ui/src/index.js';
@@ -14,35 +16,50 @@ import { renderActiveModal } from '../src/modals.js';
 import {
   diagnosePartialTask,
   renderAchievementsPanel,
+  renderHomePanel,
   renderMetricsPanel,
   renderRecordsPanel,
   renderSettingsPanel,
+  renderSettingsProfileSection,
   renderTasksPanel
 } from '../src/panels.js';
+import { renderDisabledAiContainer } from '../src/home-profile.js';
 import {
   assertUserExportPayload,
   buildExportFilename,
   serializeUserExport
 } from '../src/export.js';
-import { createInitialState } from '../src/state.js';
+import { createInitialState, syncProfileFormFromServer } from '../src/state.js';
 import {
+  buildConfigDraftKey,
   buildRecordDraftKey,
   clearAllBrowserStorageForTest,
+  computeConfigPayloadSignature,
   computePayloadSignature,
+  getPendingConfigMutation,
   getPendingMutation,
+  hasSensitiveKey,
+  loadAiDraft,
+  loadConfigDraft,
+  loadProfileDraft,
   loadRecordDraft,
+  prepareConfigMutationEnvelope,
   prepareRecordMutationEnvelope,
+  saveAiDraft,
+  saveConfigDraft,
+  savePendingConfigMutation,
   savePendingMutation,
+  saveProfileDraft,
   saveRecordDraft,
   saveUiPreferences,
   loadUiPreferences
 } from '../src/storage.js';
-import type { BootstrapData, RecordRow } from '../src/types.js';
+import type { BootstrapData, HomeData, ProfileData, RecordRow } from '../src/types.js';
 
 export interface TestCaseResult {
   id: string;
   name: string;
-  category: 'S0-B' | 'S1';
+  category: 'S0-B' | 'S1' | 'V0.2-P1';
   passed: boolean;
   assertions: number;
   details: string;
@@ -198,7 +215,7 @@ export async function runAllWebVerificationTests(): Promise<TestCaseResult[]> {
 
   async function runCase(
     id: string,
-    category: 'S0-B' | 'S1',
+    category: 'S0-B' | 'S1' | 'V0.2-P1',
     name: string,
     fn: (counter: { count: number }) => Promise<string> | string
   ): Promise<void> {
@@ -1020,6 +1037,540 @@ export async function runAllWebVerificationTests(): Promise<TestCaseResult[]> {
       c
     );
     return '设置面板「账户与数据」分组提供诚实的「导出数据」动作：按月日时区生成 life-dashboard-YYYY-MM-DD.json、保留服务端 checksum/迁移信息供 CLI 恢复、明确不提供页面恢复入口，并渲染成功/失败反馈且不包含登录口令。';
+  });
+
+  // 13. V0.2 P1-02: Custom business field `session` persistence & credential key guard
+  await runCase('V02-P1-02', 'V0.2-P1', '自定义业务字段 session 草稿/待确认写回正常保存且凭证键继续拒写', (c) => {
+    const draftKey = buildRecordDraftKey({
+      mode: 'create',
+      moduleId: 'mod-study',
+      recordTypeId: 'rt-coding',
+      fromTaskId: 'task-session-field'
+    });
+
+    // Save record draft containing custom field key `session` and `token` inside business values/rawInputs
+    saveRecordDraft({
+      draftKey,
+      mode: 'create',
+      recordId: 'rec-session-custom-1',
+      baseVersion: null,
+      moduleId: 'mod-study',
+      recordTypeId: 'rt-coding',
+      schemaVersion: 1,
+      occurredAt: '2026-10-19T15:00:00+08:00',
+      timezone: 'Asia/Shanghai',
+      status: 'confirmed',
+      values: { duration_minutes: 40, session: '第 3 场训练营', token: '专注徽章' },
+      rawInputs: { duration_minutes: '40', session: '第 3 场训练营', token: '专注徽章' },
+      taskIds: [],
+      fromTaskId: 'task-session-field',
+      updatedAt: '2026-10-19T07:00:00Z'
+    });
+    const loadedDraft = loadRecordDraft(draftKey);
+    assert(
+      loadedDraft !== null &&
+        loadedDraft.values.session === '第 3 场训练营' &&
+        loadedDraft.rawInputs.session === '第 3 场训练营',
+      'Custom business field key `session` inside values/rawInputs persists and reloads cleanly',
+      c
+    );
+
+    // Save pending mutation envelope with custom field `session` inside frozenPayload.values
+    savePendingMutation({
+      draftKey,
+      operationId: 'op-session-custom-001',
+      recordId: 'rec-session-custom-1',
+      mode: 'create',
+      payloadSignature: 'sig-session-custom',
+      frozenPayload: {
+        id: 'rec-session-custom-1',
+        module_id: 'mod-study',
+        record_type_id: 'rt-coding',
+        schema_version: 1,
+        occurred_at: '2026-10-19T15:00:00+08:00',
+        timezone: 'Asia/Shanghai',
+        status: 'confirmed',
+        values: { duration_minutes: 40, session: '第 3 场训练营' },
+        task_ids: []
+      },
+      lastError: { code: 'NETWORK_ERROR', message: '网络中断' },
+      savedAt: '2026-10-19T07:01:00Z'
+    });
+    const loadedPending = getPendingMutation(draftKey);
+    assert(
+      loadedPending !== null &&
+        (loadedPending.frozenPayload.values as Record<string, unknown>).session === '第 3 场训练营',
+      'Pending mutation envelope with custom business field `session` persists cleanly',
+      c
+    );
+
+    // Verify structural credential keys and always-credential keys are still blocked
+    assert(
+      hasSensitiveKey({ login_secret: 'abc' }) === true,
+      'login_secret is blocked at root',
+      c
+    );
+    assert(
+      hasSensitiveKey({ values: { login_secret: 'abc' } }) === true,
+      'login_secret is blocked even inside values',
+      c
+    );
+    assert(
+      hasSensitiveKey({ values: { password: 'secret' } }) === true,
+      'password is blocked even inside values',
+      c
+    );
+    assert(
+      hasSensitiveKey({ session: 'structural-session-token' }) === true,
+      'Top-level structural `session` key outside business value maps is blocked',
+      c
+    );
+    assert(
+      hasSensitiveKey({ values: { session: { nested_token: 'bad' } } }) === true,
+      'Non-primitive `session` object inside values is blocked',
+      c
+    );
+    return '自定义业务字段名 `session` 在记录草稿、个人资料草稿与待确认写回队列中正常保存恢复，同时 `login_secret`/`password`/顶层凭证结构键依然严格拒写。';
+  });
+
+  // 14. V0.2 P1-03: Configuration creation idempotent retry & frozen envelope
+  await runCase('V02-P1-03', 'V0.2-P1', '配置创建（任务/模块/模板/数值/成就）断网重试复用同一 operation_id 与冻结载荷', (c) => {
+    const state = createInitialState();
+    const data = createFixtureBootstrap();
+    state.bootstrap = data;
+
+    const draftKey = buildConfigDraftKey('create-task');
+    saveConfigDraft({
+      draftKey,
+      kind: 'create-task',
+      entityId: 'task-cfg-fixed-001',
+      rawInputs: {
+        module_id: 'mod-study',
+        title: '每日阅读 30 分钟',
+        completion_mode: 'manual',
+        business_date: '2026-10-19',
+        timezone: 'Asia/Shanghai'
+      },
+      updatedAt: '2026-10-19T07:10:00Z'
+    });
+    const savedCfgDraft = loadConfigDraft(draftKey);
+    assert(savedCfgDraft !== null && savedCfgDraft.rawInputs.title === '每日阅读 30 分钟', 'Config draft saved and loaded', c);
+
+    const payload1 = {
+      id: 'task-cfg-fixed-001',
+      module_id: 'mod-study',
+      title: '每日阅读 30 分钟',
+      completion_mode: 'manual',
+      record_type_id: null,
+      acceptance: null,
+      business_date: '2026-10-19',
+      timezone: 'Asia/Shanghai'
+    };
+    const sig1 = computeConfigPayloadSignature('create-task', payload1);
+    const env1 = prepareConfigMutationEnvelope({
+      draftKey,
+      kind: 'create-task',
+      candidateEntityId: payload1.id,
+      candidatePayload: payload1,
+      signature: sig1,
+      allocateUuid: () => 'op-cfg-task-0001'
+    });
+    assert(env1.reusedPending === false && env1.operationId === 'op-cfg-task-0001', 'First config submit allocates op-cfg-task-0001', c);
+
+    // Simulate network drop after server processed the request
+    savePendingConfigMutation({
+      draftKey,
+      kind: 'create-task',
+      operationId: env1.operationId,
+      entityId: env1.entityId,
+      payloadSignature: sig1,
+      frozenPayload: env1.payload,
+      lastError: { code: 'NETWORK_ERROR', message: '响应丢失' },
+      savedAt: '2026-10-19T07:11:00Z'
+    });
+
+    // User modifies the form title while original operation is still unconfirmed
+    const modifiedPayload = { ...payload1, id: 'task-cfg-new-999', title: '被修改但原操作未确认的标题' };
+    const sig2 = computeConfigPayloadSignature('create-task', modifiedPayload);
+    const env2 = prepareConfigMutationEnvelope({
+      draftKey,
+      kind: 'create-task',
+      candidateEntityId: 'task-cfg-new-999',
+      candidatePayload: modifiedPayload,
+      signature: sig2,
+      allocateUuid: () => 'op-cfg-task-0002'
+    });
+    assert(env2.reusedPending === true, 'Unconfirmed config creation reuses pending envelope even if form input changed', c);
+    assert(env2.operationId === 'op-cfg-task-0001', 'Reuses original operation_id op-cfg-task-0001', c);
+    assert(env2.entityId === 'task-cfg-fixed-001', 'Reuses original entityId task-cfg-fixed-001', c);
+    assert(env2.payload.title === '每日阅读 30 分钟', 'Reuses frozenPayload until original operation is confirmed', c);
+    assert(getPendingConfigMutation(draftKey)?.operationId === 'op-cfg-task-0001', 'Pending config mutation persists across reload', c);
+
+    // Verify modal renders unknown_network status bar and retry button
+    state.activeModal = { kind: 'create-task', defaultModuleId: 'mod-study' };
+    state.configForm = {
+      draftKey,
+      kind: 'create-task',
+      submissionStatus: 'unknown_network',
+      operationId: 'op-cfg-task-0001',
+      entityId: 'task-cfg-fixed-001',
+      restoredFromStorage: true,
+      lastSavedLocalAt: '2026-10-19T07:11:00Z',
+      conflictError: null,
+      validationError: null
+    };
+    const modalHtml = renderActiveModal(state, data);
+    assert(modalHtml.includes('data-submission-status="unknown_network"'), 'Create-task modal renders unknown_network status pill', c);
+    assert(modalHtml.includes('op-cfg-tas'), 'Create-task modal displays pending operation_id prefix', c);
+    return '五大配置创建弹窗统一持久化草稿、entityId 与 operation_id；断网/丢回执或刷新后重试严格复用同一 operation_id 与冻结载荷，杜绝重复配置。';
+  });
+
+  // 15. V0.2 P1-04: Standard Home real data aggregation, PIN_UNAVAILABLE warning & source navigation
+  await runCase('V02-P1-04', 'V0.2-P1', '主页标准模式真实数据聚合、null/0 区分、失效固定清理提醒与来源跳转', (c) => {
+    const state = createInitialState();
+    const data = createFixtureBootstrap();
+    state.bootstrap = data;
+
+    const homeData: HomeData = {
+      cursor: 12,
+      profile: {
+        id: 'user-1',
+        version: 2,
+        nickname: '小哲',
+        bio: '稳步构建个人量化生活系统',
+        timezone: 'Asia/Shanghai',
+        static_avatar_ref: null,
+        module_fields: [
+          {
+            id: 'pf-focus-1',
+            module_id: 'mod-study',
+            key: 'current_focus',
+            label: '当前重心',
+            type: 'text',
+            kind: 'profile',
+            value: '完成 v0.2 第一阶段',
+            unit: null,
+            options: []
+          }
+        ]
+      },
+      preferences: {
+        id: 'user-1',
+        version: 2,
+        minimal_mode: false,
+        pinned_metric_ids: ['metric-coding-sum', 'metric-zero-val', 'metric-archived-ghost'],
+        pinned_task_ids: ['task-py-10'],
+        pinned_trends: []
+      },
+      warnings: [
+        {
+          code: 'PIN_UNAVAILABLE',
+          kind: 'metric',
+          id: 'metric-archived-ghost'
+        }
+      ],
+      metrics: [
+        data.metrics[0], // value: null -> 暂无数据
+        {
+          ...data.metrics[0],
+          id: 'metric-zero-val',
+          definition: {
+            ...data.metrics[0].definition,
+            id: 'metric-zero-val',
+            name: '今日失误次数',
+            unit: '次'
+          },
+          computed: {
+            ...data.metrics[0].computed,
+            value: '0',
+            sample_count: 1
+          }
+        }
+      ],
+      tasks: [data.tasks[0]],
+      recent_achievements: [
+        {
+          id: 'award-valid-1',
+          user_id: 'user-1',
+          achievement_id: 'ach-coding-10',
+          rule_version: 1,
+          period_key: 'once',
+          state: 'unlocked',
+          unlocked_at: '2026-10-19T07:30:00Z',
+          evaluated_at: '2026-10-19T07:30:00Z',
+          evidence: { ...data.metrics[0].computed, value: '15', sample_count: 2 },
+          original_evidence: { ...data.metrics[0].computed, value: '15', sample_count: 2 },
+          version: 1,
+          definition: data.achievement_definitions[0].definition,
+          module_id: 'mod-study'
+        }
+      ],
+      wallet: null,
+      avatar: {
+        enabled: false,
+        model_asset_ref: null
+      }
+    };
+    state.home = homeData;
+    state.homePreferences = homeData.preferences;
+
+    const html = renderHomePanel(state, data);
+    assert(html.includes('id="ld-home-standard"'), 'Renders standard home container #ld-home-standard', c);
+    assert(html.includes('id="ld-home-avatar-slot"') && html.includes('data-avatar-renderer="static"'), 'Renders 3D static avatar slot', c);
+    assert(html.includes('小哲') && html.includes('完成 v0.2 第一阶段'), 'Renders profile summary nickname and custom field', c);
+    assert(html.includes('暂无数据'), 'Metric with computed.value === null displays 暂无数据', c);
+    assert(html.includes('>0</span><span class="ld-metric-unit">次'), 'Metric with computed.value === "0" displays 0 (never confused with null)', c);
+    assert(html.includes('PIN_UNAVAILABLE') && html.includes('data-action="home-clean-unavailable-pins"'), 'Renders PIN_UNAVAILABLE banner and one-click cleanup action', c);
+    assert(html.includes('data-action="home-metric-detail" data-metric-id="metric-coding-sum"'), 'Metric card includes source navigation button', c);
+    assert(html.includes('data-action="home-task-detail" data-task-id="task-py-10"'), 'Task card includes source navigation button', c);
+    assert(html.includes('data-action="home-achievement-detail" data-achievement-id="ach-coding-10"'), 'Achievement card includes source navigation button', c);
+    assert(html.includes('wallet = null') && !html.includes('¥0'), 'Explicitly marks wallet = null and never fabricates a 0 balance', c);
+    return '标准主页聚合展示真实个人摘要、null（暂无数据）与 0 严格区分的固定数值、今日与固定去重任务、近期有效成就、失效固定清理提醒及一键跳回来源位置。';
+  });
+
+  // 16. V0.2 P1-05: Minimal Mode toggle, layout isolation & AI draft preservation
+  await runCase('V02-P1-05', 'V0.2-P1', '主页极简模式切换、仅显示居中 AI 输入框与本地输入草稿保留', (c) => {
+    const state = createInitialState();
+    const data = createFixtureBootstrap();
+    state.bootstrap = data;
+
+    // Save an AI input draft on Home before toggling minimal mode
+    saveAiDraft('home', '帮我记录今天下午 45 分钟的 Rust 并发练习');
+    assert(loadAiDraft('home') === '帮我记录今天下午 45 分钟的 Rust 并发练习', 'Home AI draft saved locally', c);
+
+    const prefs = {
+      id: 'user-1',
+      version: 3,
+      minimal_mode: true,
+      pinned_metric_ids: ['metric-coding-sum'],
+      pinned_task_ids: ['task-py-10'],
+      pinned_trends: []
+    };
+    state.homePreferences = prefs;
+
+    const minimalHtml = renderHomePanel(state, data);
+    assert(minimalHtml.includes('id="ld-home-minimal"'), 'Minimal mode renders #ld-home-minimal container', c);
+    assert(minimalHtml.includes('id="ld-home-ai-box"') && minimalHtml.includes('id="ld-home-ai-input"'), 'Minimal mode renders centered AI input box', c);
+    assert(minimalHtml.includes('帮我记录今天下午 45 分钟的 Rust 并发练习'), 'Preserves local AI draft across mode switch', c);
+    assert(!minimalHtml.includes('id="ld-home-standard"'), 'Standard home grid is hidden in minimal mode', c);
+    assert(!minimalHtml.includes('id="ld-home-avatar-slot"'), '3D avatar slot is hidden in minimal mode', c);
+    assert(!minimalHtml.includes('id="ld-home-metrics"'), 'Pinned metrics section is hidden in minimal mode', c);
+    assert(!minimalHtml.includes('id="ld-home-tasks"'), 'Tasks section is hidden in minimal mode', c);
+    assert(!minimalHtml.includes('id="ld-home-achievements"'), 'Achievements section is hidden in minimal mode', c);
+
+    // Switch back to standard mode -> pinned order and AI draft remain intact
+    prefs.minimal_mode = false;
+    const standardHtml = renderHomePanel(state, data);
+    assert(standardHtml.includes('id="ld-home-standard"'), 'Restores #ld-home-standard when minimal_mode is false', c);
+    assert(standardHtml.includes('帮我记录今天下午 45 分钟的 Rust 并发练习'), 'Home AI draft remains intact after switching back to standard mode', c);
+    assert(
+      prefs.pinned_metric_ids[0] === 'metric-coding-sum' &&
+        prefs.pinned_task_ids[0] === 'task-py-10',
+      'Pinned metric and task IDs order is preserved after minimal mode toggle',
+      c
+    );
+    return '极简模式开启后主页仅展示居中 AI 输入框与退出极简按钮，隐藏形象槽位、资料摘要、数值、任务与成就卡片；切回标准模式后原固定卡片顺序与输入草稿完整恢复。';
+  });
+
+  // 17. V0.2 P1-06 & P1-07: Profile Settings 7 field types, unsaved leave guard, 409 conflict & observation read-only
+  await runCase('V02-P1-06', 'V0.2-P1', '个人信息详情 7 类字段编辑、observation/derived 只读说明、未保存离开提醒与 409 冲突处理', (c) => {
+    const state = createInitialState();
+    const data = createFixtureBootstrap();
+    state.bootstrap = data;
+    state.route = '/settings';
+    state.panels.settings.subTab = 'profile';
+
+    const serverProfile: ProfileData = {
+      id: 'user-1',
+      version: 2,
+      nickname: '阿泽',
+      bio: null,
+      timezone: 'Asia/Shanghai',
+      static_avatar_ref: null,
+      module_fields: [
+        {
+          id: 'pf-height-1',
+          module_id: 'mod-study',
+          key: 'height_cm',
+          label: '身高',
+          type: 'decimal',
+          kind: 'profile',
+          value: 178.5,
+          unit: 'cm',
+          options: []
+        },
+        {
+          id: 'pf-session-1',
+          module_id: 'mod-study',
+          key: 'session',
+          label: '当前训练营期数',
+          type: 'text',
+          kind: 'profile',
+          value: '秋季第 2 期',
+          unit: null,
+          options: []
+        }
+      ]
+    };
+
+    state.profile = serverProfile;
+    syncProfileFormFromServer(state, serverProfile);
+
+    // Simulate user editing nickname -> dirty = true + pending leave guard
+    state.profileForm.nickname = '阿泽（本地未保存修改）';
+    state.profileForm.dirty = true;
+    state.profileForm.pendingLeaveTarget = { kind: 'route', route: '/tasks' };
+
+    saveProfileDraft({
+      baseVersion: 2,
+      nickname: state.profileForm.nickname,
+      bio: null,
+      timezone: 'Asia/Shanghai',
+      upserts: state.profileForm.fields,
+      removeIds: [],
+      rawInputs: { session: '秋季第 2 期' },
+      updatedAt: '2026-10-19T08:15:00Z'
+    });
+    const loadedProfDraft = loadProfileDraft();
+    assert(
+      loadedProfDraft !== null &&
+        loadedProfDraft.rawInputs.session === '秋季第 2 期' &&
+        loadedProfDraft.upserts.some(f => f.key === 'session'),
+      'Profile draft with custom field key `session` persists in localStorage',
+      c
+    );
+
+    const profHtml = renderSettingsProfileSection(state, data);
+    assert(profHtml.includes('id="ld-profile-settings"') && profHtml.includes('id="ld-form-profile"'), 'Renders profile settings form', c);
+    assert(profHtml.includes('id="ld-profile-leave-confirm"'), 'Renders unsaved changes leave confirmation banner', c);
+    assert(profHtml.includes('data-action="profile-stay"') && profHtml.includes('data-action="profile-discard-and-leave"'), 'Renders stay and discard-and-leave actions', c);
+    assert(profHtml.includes('data-profile-boundary="observation-derived-disabled"'), 'Renders read-only observation/derived boundary card', c);
+    assert(profHtml.includes('观测与派生改写本阶段不可用') && profHtml.includes('禁止直接手改'), 'Explains observation and derived fields cannot be directly overwritten', c);
+
+    // Simulate 409 VERSION_CONFLICT with server v3 baseline
+    state.profileForm.submissionStatus = 'conflict_pending';
+    state.profileForm.conflictError = {
+      code: 'VERSION_CONFLICT',
+      message: '个人资料版本冲突：期望 base_version=2，实际服务端版本为 3'
+    };
+    state.profileForm.conflictServerProfile = {
+      ...serverProfile,
+      nickname: '服务端最新昵称 v3',
+      version: 3
+    };
+    const conflictHtml = renderSettingsProfileSection(state, data);
+    assert(conflictHtml.includes('data-conflict-code="VERSION_CONFLICT"'), 'Renders profile 409 conflict panel', c);
+    assert(conflictHtml.includes('服务端最新昵称 v3'), 'Displays server v3 latest nickname for comparison', c);
+    assert(conflictHtml.includes('阿泽（本地未保存修改）'), 'Preserves user unsaved local nickname input on 409', c);
+    assert(conflictHtml.includes('data-action="profile-conflict-adopt"'), 'Renders explicit button to adopt server v3 baseline', c);
+    return '个人信息详情支持基础资料与 7 类字段类型动态增删改，严格将 observation/derived 设为只读说明，提供未保存离开拦截横幅与 409 冲突对比采纳机制。';
+  });
+
+  // 18. V0.2 P1-08: Disabled AI boxes & 3D StaticAvatarRenderer port contract
+  await runCase('V02-P1-08', 'V0.2-P1', '主页与记录页受控禁用 AI 输入框及 3D AvatarRendererPort 静态占位契约（0 模型请求）', (c) => {
+    const state = createInitialState();
+    saveAiDraft('home', '今天晨跑 5 公里');
+    saveAiDraft('records', '刚喝了 500ml 温水');
+
+    const homeAiHtml = renderDisabledAiContainer('home', state);
+    const recordsAiHtml = renderDisabledAiContainer('records', state);
+    assert(
+      homeAiHtml.includes('id="ld-home-ai-box"') &&
+        homeAiHtml.includes('id="ld-home-ai-send-btn"') &&
+        homeAiHtml.includes('disabled aria-disabled="true"'),
+      'Home AI box renders disabled send button',
+      c
+    );
+    assert(
+      recordsAiHtml.includes('id="ld-records-ai-box"') &&
+        recordsAiHtml.includes('id="ld-records-ai-send-btn"') &&
+        recordsAiHtml.includes('disabled aria-disabled="true"'),
+      'Records AI box renders disabled send button',
+      c
+    );
+    assert(
+      homeAiHtml.includes('今天晨跑 5 公里') && recordsAiHtml.includes('刚喝了 500ml 温水'),
+      'Both Home and Records AI boxes preserve independent local drafts',
+      c
+    );
+    assert(
+      homeAiHtml.includes('AI 将在 v0.3 开放') && recordsAiHtml.includes('AI 将在 v0.3 开放'),
+      'Both AI boxes clearly explain disabled status and local draft safety',
+      c
+    );
+
+    // Verify AvatarRendererPort & StaticAvatarRenderer contract without network requests
+    assert(
+      AVATAR_ACTION_IDS.join(',') === 'idle,greeting,celebrate,focus',
+      'AVATAR_ACTION_IDS strictly matches 4 whitelisted action IDs',
+      c
+    );
+    const renderer = createStaticAvatarRenderer();
+    const events: string[] = [];
+    const offReady = renderer.on('ready', (ev) => events.push(`ready:${ev.mode}:${ev.network_requests}`));
+    const offInteraction = renderer.on('interaction', (ev) => events.push(`interaction:${ev.action_id}:${ev.target}`));
+    const offError = renderer.on('error', (ev) => events.push(`error:${ev.code}:${ev.fallback_action}`));
+
+    const attrs: Record<string, string> = {};
+    const mockContainer = {
+      innerHTML: '',
+      setAttribute(name: string, value: string) {
+        attrs[name] = value;
+      }
+    };
+    renderer.mount(
+      mockContainer,
+      { character_id: 'user-1', model_asset_ref: null, action_id: 'greeting', reduced_motion: false, version: 1 },
+      { reduced_motion: false }
+    );
+    assert(
+      renderer.getState().mounted === true &&
+        renderer.getState().network_requests === 0 &&
+        renderer.getState().action_id === 'greeting',
+      'StaticAvatarRenderer mounts with network_requests === 0',
+      c
+    );
+    assert(attrs['data-avatar-renderer'] === 'static', 'StaticAvatarRenderer sets data-avatar-renderer="static"', c);
+    assert(events.includes('ready:static_fallback:0'), 'StaticAvatarRenderer emits ready:static_fallback:0 upon mount', c);
+
+    // Updating with reduced_motion: true forces action_id to idle
+    renderer.update(
+      { action_id: 'celebrate', version: 2 },
+      { reduced_motion: true }
+    );
+    assert(
+      renderer.getState().action_id === 'idle' && renderer.getState().reduced_motion === true,
+      'StaticAvatarRenderer enforces idle action when reduced_motion is true',
+      c
+    );
+
+    // Updating with an invalid action emits error and falls back to idle
+    renderer.update({ action_id: 'invalid_dance', reduced_motion: false });
+    assert(
+      events.includes('error:UNSUPPORTED_ACTION:idle') && renderer.getState().action_id === 'idle',
+      'StaticAvatarRenderer rejects non-whitelisted action and falls back to idle',
+      c
+    );
+
+    renderer.update({ action_id: 'focus', reduced_motion: false });
+    renderer.triggerInteraction('avatar-card');
+    assert(events.includes('interaction:focus:avatar-card'), 'StaticAvatarRenderer emits interaction event', c);
+
+    renderer.pause();
+    assert(renderer.getState().paused === true, 'StaticAvatarRenderer pause() sets paused=true', c);
+
+    offReady();
+    offInteraction();
+    offError();
+    renderer.dispose();
+    assert(
+      renderer.getState().mounted === false &&
+        renderer.getState().disposed === true &&
+        renderer.getState().network_requests === 0,
+      'StaticAvatarRenderer dispose() marks disposed=true and keeps network_requests === 0',
+      c
+    );
+    return '主页与记录页受控禁用 AI 输入框均禁用发送、明示未开放状态并独立保存草稿；AvatarRendererPort 静态占位实现完整生命周期且模型网络请求数为 0。';
   });
 
   return results;

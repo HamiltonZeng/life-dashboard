@@ -20,9 +20,7 @@ export interface UserProfile {
 }
 
 // ---------------------------------------------------------------------------
-// S1: minimal user-data export (GET /api/v1/export). The payload is the raw
-// server backup envelope: format/schema/checksum metadata plus the whitelisted
-// per-user tables. Restore is intentionally CLI-only; the web UI only downloads.
+// S1: minimal user-data export (GET /api/v1/export).
 // ---------------------------------------------------------------------------
 
 export interface UserExportPayload {
@@ -40,6 +38,7 @@ export interface UserExportPayload {
 
 export interface CapabilitiesData {
   contract_version: string;
+  profile?: string;
   stage: string;
   sync: boolean;
   cloud_ai: boolean;
@@ -54,6 +53,16 @@ export interface CapabilitiesData {
   ai_preview?: boolean;
   user_export?: boolean;
   user_restore?: string;
+  // v0.2 Phase 1 capability flags
+  home?: boolean;
+  home_preferences?: boolean;
+  profile_fields?: boolean;
+  ai_chat?: boolean;
+  ai_recording?: boolean;
+  ai_profile_update?: boolean;
+  ai_reward_pricing?: boolean;
+  avatar_renderer?: boolean;
+  avatar_redemption?: boolean;
 }
 
 export interface ModuleRow {
@@ -172,6 +181,92 @@ export interface BootstrapData {
   cursor: string | number;
 }
 
+// ---------------------------------------------------------------------------
+// v0.2 Phase 1: Profile, Home Preferences & Home Composite Contracts
+// ---------------------------------------------------------------------------
+
+export type ProfileFieldType =
+  | 'text'
+  | 'textarea'
+  | 'integer'
+  | 'decimal'
+  | 'date'
+  | 'boolean'
+  | 'single_select';
+
+export interface ProfileFieldRow {
+  id: string;
+  module_id: string;
+  key: string;
+  label: string;
+  type: ProfileFieldType;
+  kind: 'profile';
+  value: string | number | boolean | null;
+  unit: string | null;
+  options: string[];
+}
+
+export interface ProfileData {
+  id: string;
+  version: number;
+  nickname: string;
+  bio: string | null;
+  timezone: string;
+  static_avatar_ref: string | null;
+  module_fields: ProfileFieldRow[];
+}
+
+export interface ProfileInput {
+  base_version: number;
+  nickname?: string;
+  bio?: string | null;
+  timezone?: string;
+  field_upserts?: ProfileFieldRow[];
+  field_remove_ids?: string[];
+}
+
+export interface HomePreferencesData {
+  id: string;
+  version: number;
+  minimal_mode: boolean;
+  pinned_metric_ids: string[];
+  pinned_task_ids: string[];
+  pinned_trends: unknown[];
+}
+
+export interface HomePreferencesInput {
+  base_version: number;
+  minimal_mode?: boolean;
+  pinned_metric_ids?: string[];
+  pinned_task_ids?: string[];
+}
+
+export interface HomeWarning {
+  kind: 'metric' | 'task';
+  id: string;
+  code: 'PIN_UNAVAILABLE' | string;
+}
+
+export interface HomeAchievementRow extends AchievementAwardRow {
+  definition: AchievementInput & { repeat_policy?: 'once' | 'per_period' };
+  module_id: string;
+}
+
+export interface HomeData {
+  cursor: string | number;
+  profile: ProfileData;
+  preferences: HomePreferencesData;
+  metrics: MetricRow[];
+  tasks: TaskRow[];
+  recent_achievements: HomeAchievementRow[];
+  warnings?: HomeWarning[];
+  wallet: null;
+  avatar: {
+    enabled: boolean;
+    model_asset_ref: string | null;
+  };
+}
+
 export interface ApiErrorShape {
   code: string;
   message: string;
@@ -195,13 +290,13 @@ export interface PanelFilterState {
 
 export interface ReturnContext {
   fromRoute: PanelRoute;
-  fromPanelKey: PanelKey;
+  fromPanelKey: PanelKey | 'home';
   savedFilter: PanelFilterState;
   label: string;
 }
 
 // ---------------------------------------------------------------------------
-// S1 Record Reliability: Persistent Local Drafts & Stable Operation IDs
+// S1 Record & v0.2 Phase 1 Configuration Reliability
 // ---------------------------------------------------------------------------
 
 export interface PersistedRecordDraft {
@@ -234,7 +329,7 @@ export interface PendingMutationEnvelope {
 }
 
 export interface RecordFormRuntimeState {
-  baseVersion?:number|null;
+  baseVersion?: number | null;
   draftKey: string;
   submissionStatus: SubmissionStateKind;
   operationId: string | null;
@@ -244,6 +339,86 @@ export interface RecordFormRuntimeState {
   conflictError: { code: string; message: string; requestId?: string } | null;
   conflictServerRecord: RecordRow | null;
   validationError: { code: string; message: string } | null;
+}
+
+export type ConfigMutationKind =
+  | 'create-module'
+  | 'create-template'
+  | 'create-task'
+  | 'create-metric'
+  | 'create-achievement'
+  | 'profile'
+  | 'home-preferences';
+
+export interface PersistedConfigDraft {
+  draftKey: string;
+  kind: ConfigMutationKind;
+  entityId: string;
+  rawInputs: Record<string, string>;
+  updatedAt: string;
+}
+
+export interface PendingConfigMutationEnvelope<TPayload = Record<string, unknown>> {
+  draftKey: string;
+  kind: ConfigMutationKind;
+  operationId: string;
+  entityId: string;
+  payloadSignature: string;
+  frozenPayload: TPayload;
+  lastError: { code: string; message: string };
+  savedAt: string;
+}
+
+export interface ConfigFormRuntimeState {
+  draftKey: string;
+  kind: ConfigMutationKind | null;
+  submissionStatus: SubmissionStateKind;
+  operationId: string | null;
+  entityId: string | null;
+  restoredFromStorage: boolean;
+  lastSavedLocalAt: string | null;
+  conflictError: { code: string; message: string; requestId?: string } | null;
+  validationError: { code: string; message: string } | null;
+}
+
+export interface PersistedProfileDraft {
+  baseVersion: number;
+  nickname: string;
+  bio: string | null;
+  timezone: string;
+  upserts: ProfileFieldRow[];
+  removeIds: string[];
+  rawInputs: Record<string, string>;
+  updatedAt: string;
+}
+
+export interface ProfileFormRuntimeState {
+  baseVersion: number;
+  nickname: string;
+  bio: string;
+  bioIsNull: boolean;
+  timezone: string;
+  fields: ProfileFieldRow[];
+  removeIds: string[];
+  dirty: boolean;
+  submissionStatus: SubmissionStateKind;
+  operationId: string | null;
+  lastSavedMessage: string | null;
+  conflictError: { code: string; message: string; requestId?: string } | null;
+  conflictServerProfile: ProfileData | null;
+  validationError: { code: string; message: string } | null;
+  pendingLeaveTarget:
+    | null
+    | { kind: 'route'; route: PanelRoute }
+    | { kind: 'subtab'; subTab: string };
+}
+
+export type AiDraftScope = 'home' | 'records';
+
+export interface PersistedAiDrafts {
+  home: string;
+  records: string;
+  updatedAt: string;
 }
 
 export interface PersistedUiPreferences {

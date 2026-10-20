@@ -11,9 +11,14 @@ import type {
   ApiErrorShape,
   BootstrapData,
   CapabilitiesData,
+  HomeData,
+  HomePreferencesData,
+  HomePreferencesInput,
   MetricInput,
   MetricRow,
   ModuleRow,
+  ProfileData,
+  ProfileInput,
   RecordInput,
   RecordRow,
   RecordTypeRow,
@@ -45,12 +50,14 @@ export function isUnknownNetworkError(err: unknown): boolean {
     return true;
   }
   return (
-    err.status === 0 ||err.status>=500 ||
+    err.status === 0 ||
+    err.status >= 500 ||
     err.status === 502 ||
     err.status === 503 ||
     err.status === 504 ||
     err.code === 'NETWORK_ERROR' ||
-    err.code === 'BAD_GATEWAY'
+    err.code === 'BAD_GATEWAY' ||
+    err.code === 'BAD_RECEIPT'
   );
 }
 
@@ -100,9 +107,16 @@ async function request<T>(
   let payload: {
     data?: T;
     error?: ApiErrorShape;
-    operation_id?:string;
+    operation_id?: string;
   };
-  try {payload=await res.json();}catch{throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'未收到可验证的服务器回执，请保留原操作后重试确认'});}
+  try {
+    payload = await res.json();
+  } catch {
+    throw new ApiClientError(0, {
+      code: 'BAD_RECEIPT',
+      message: '未收到可验证的服务器回执，请保留原操作后重试确认'
+    });
+  }
 
   if (!res.ok) {
     throw new ApiClientError(
@@ -114,17 +128,76 @@ async function request<T>(
     );
   }
 
-  if(!payload || typeof payload!=='object' || payload.data===undefined)throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'服务器回执不完整，尚未确认保存'});
-  if(method!=='GET'&&!isSessionEndpoint && !path.startsWith('/ai/')) {
-    const data=payload.data as any;
-    const expectedId=(body as any)?.id??path.split('/')[2];
-    const version=path==='/record-types'?data?.schema_version:data?.version;
-    if(!data || typeof data.id!=='string' || !Number.isInteger(version) || version<1 || (expectedId&&data.id!==expectedId) || payload.operation_id!==headers['Idempotency-Key'])throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'保存回执缺少正确操作、记录与版本，尚未确认'});
-    if(path.startsWith('/records')&&method!=='DELETE') {
-      const sent=body as any;
-      if(data.module_id!==sent.module_id||data.record_type_id!==sent.record_type_id||data.schema_version!==sent.schema_version||!data.values||typeof data.values!=='object'||!Array.isArray(data.task_ids)||Date.parse(data.occurred_at)!==Date.parse(sent.occurred_at)||data.timezone!==sent.timezone||data.status!==sent.status)throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'记录确认字段不完整，请保留原提交后重试确认'});
+  if (!payload || typeof payload !== 'object' || payload.data === undefined) {
+    throw new ApiClientError(0, {
+      code: 'BAD_RECEIPT',
+      message: '服务器回执不完整，尚未确认保存'
+    });
+  }
+
+  if (method !== 'GET' && !isSessionEndpoint && !path.startsWith('/ai/')) {
+    const data = payload.data as any;
+    const expectedId = (body as any)?.id ?? path.split('/')[2];
+    const version = path === '/record-types' ? data?.schema_version : data?.version;
+    if (
+      !data ||
+      typeof data.id !== 'string' ||
+      !Number.isInteger(version) ||
+      version < 1 ||
+      (expectedId && data.id !== expectedId) ||
+      payload.operation_id !== headers['Idempotency-Key']
+    ) {
+      throw new ApiClientError(0, {
+        code: 'BAD_RECEIPT',
+        message: '保存回执缺少正确操作、记录与版本，尚未确认'
+      });
     }
-    if(path.startsWith('/records/')&&method==='DELETE'&&(typeof data.deleted_at!=='string'||!Number.isFinite(Date.parse(data.deleted_at))))throw new ApiClientError(0,{code:'BAD_RECEIPT',message:'删除回执不完整，请刷新核对记录状态'});
+    if (path.startsWith('/records') && method !== 'DELETE') {
+      const sent = body as any;
+      if (
+        data.module_id !== sent.module_id ||
+        data.record_type_id !== sent.record_type_id ||
+        data.schema_version !== sent.schema_version ||
+        !data.values ||
+        typeof data.values !== 'object' ||
+        !Array.isArray(data.task_ids) ||
+        Date.parse(data.occurred_at) !== Date.parse(sent.occurred_at) ||
+        data.timezone !== sent.timezone ||
+        data.status !== sent.status
+      ) {
+        throw new ApiClientError(0, {
+          code: 'BAD_RECEIPT',
+          message: '记录确认字段不完整，请保留原提交后重试确认'
+        });
+      }
+    }
+    if (
+      path.startsWith('/records/') &&
+      method === 'DELETE' &&
+      (typeof data.deleted_at !== 'string' || !Number.isFinite(Date.parse(data.deleted_at)))
+    ) {
+      throw new ApiClientError(0, {
+        code: 'BAD_RECEIPT',
+        message: '删除回执不完整，请刷新核对记录状态'
+      });
+    }
+    if (path === '/profile' && (!Array.isArray(data.module_fields) || typeof data.nickname !== 'string')) {
+      throw new ApiClientError(0, {
+        code: 'BAD_RECEIPT',
+        message: '个人资料回执字段不完整，请保留原提交后重试确认'
+      });
+    }
+    if (
+      path === '/home-preferences' &&
+      (typeof data.minimal_mode !== 'boolean' ||
+        !Array.isArray(data.pinned_metric_ids) ||
+        !Array.isArray(data.pinned_task_ids))
+    ) {
+      throw new ApiClientError(0, {
+        code: 'BAD_RECEIPT',
+        message: '首页偏好回执字段不完整，请保留原提交后重试确认'
+      });
+    }
   }
   return payload.data as T;
 }
@@ -175,11 +248,29 @@ export const api = {
     return request<BootstrapData>('GET', '/bootstrap');
   },
 
-  /**
-   * S1 minimal export: reads the authenticated user's complete server-side
-   * data snapshot. Read-only GET; the server attaches format/schema/checksum
-   * metadata. Credentials/session material are not part of the payload.
-   */
+  getProfile(): Promise<ProfileData> {
+    return request<ProfileData>('GET', '/profile');
+  },
+
+  updateProfile(input: ProfileInput, idempotencyKey?: string): Promise<ProfileData> {
+    return request<ProfileData>('PATCH', '/profile', input, idempotencyKey);
+  },
+
+  getHomePreferences(): Promise<HomePreferencesData> {
+    return request<HomePreferencesData>('GET', '/home-preferences');
+  },
+
+  updateHomePreferences(
+    input: HomePreferencesInput,
+    idempotencyKey?: string
+  ): Promise<HomePreferencesData> {
+    return request<HomePreferencesData>('PATCH', '/home-preferences', input, idempotencyKey);
+  },
+
+  getHome(): Promise<HomeData> {
+    return request<HomeData>('GET', '/home');
+  },
+
   exportUserData(): Promise<UserExportPayload> {
     return request<UserExportPayload>('GET', '/export');
   },
@@ -242,7 +333,10 @@ export const api = {
     );
   },
 
-  createTask(input: Omit<TaskInput, 'id'> & { id?: string }, idempotencyKey?: string): Promise<TaskRow> {
+  createTask(
+    input: Omit<TaskInput, 'id'> & { id?: string },
+    idempotencyKey?: string
+  ): Promise<TaskRow> {
     return request<TaskRow>(
       'POST',
       '/tasks',
@@ -263,7 +357,10 @@ export const api = {
     );
   },
 
-  createRecord(input: Omit<RecordInput, 'id'> & { id?: string }, idempotencyKey?: string): Promise<RecordRow> {
+  createRecord(
+    input: Omit<RecordInput, 'id'> & { id?: string },
+    idempotencyKey?: string
+  ): Promise<RecordRow> {
     return request<RecordRow>(
       'POST',
       '/records',
@@ -296,7 +393,10 @@ export const api = {
     );
   },
 
-  createMetric(input: Omit<MetricInput, 'id'> & { id?: string }, idempotencyKey?: string): Promise<MetricRow> {
+  createMetric(
+    input: Omit<MetricInput, 'id'> & { id?: string },
+    idempotencyKey?: string
+  ): Promise<MetricRow> {
     return request<MetricRow>(
       'POST',
       '/metrics',
@@ -340,7 +440,10 @@ export const api = {
     );
   },
 
-  createAiGeneration(input: AiGenerationRequest, idempotencyKey?: string): Promise<AiGenerationEnvelope> {
+  createAiGeneration(
+    input: AiGenerationRequest,
+    idempotencyKey?: string
+  ): Promise<AiGenerationEnvelope> {
     return request<unknown>('POST', '/ai/generations', input, idempotencyKey).then(
       normalizeAiEnvelope
     );

@@ -4,9 +4,14 @@ import type {
   AiJobRow,
   BootstrapData,
   CapabilitiesData,
+  ConfigFormRuntimeState,
+  HomeData,
+  HomePreferencesData,
   PanelFilterState,
   PanelKey,
   PanelRoute,
+  ProfileData,
+  ProfileFormRuntimeState,
   RecordFormRuntimeState,
   ReturnContext,
   UserProfile
@@ -51,6 +56,9 @@ export interface AppState {
   user: UserProfile | null;
   capabilities: CapabilitiesData | null;
   bootstrap: BootstrapData | null;
+  home: HomeData | null;
+  profile: ProfileData | null;
+  homePreferences: HomePreferencesData | null;
   loading: boolean;
   submittingModal: boolean;
   error: { code?: string; message: string; requestId?: string } | null;
@@ -64,6 +72,8 @@ export interface AppState {
   panels: Record<PanelKey, PanelFilterState>;
   returnContext: ReturnContext | null;
   recordForm: RecordFormRuntimeState;
+  configForm: ConfigFormRuntimeState;
+  profileForm: ProfileFormRuntimeState;
   exportUi: ExportUiState;
   ai: AiState;
   activeModal:
@@ -106,12 +116,60 @@ export function createInitialRecordFormState(): RecordFormRuntimeState {
   };
 }
 
+export function createInitialConfigFormState(): ConfigFormRuntimeState {
+  return {
+    draftKey: '',
+    kind: null,
+    submissionStatus: 'idle',
+    operationId: null,
+    entityId: null,
+    restoredFromStorage: false,
+    lastSavedLocalAt: null,
+    conflictError: null,
+    validationError: null
+  };
+}
+
+export function createInitialProfileFormState(profile?: ProfileData | null): ProfileFormRuntimeState {
+  return {
+    baseVersion: profile?.version ?? 1,
+    nickname: profile?.nickname ?? '本地用户',
+    bio: profile?.bio ?? '',
+    bioIsNull: profile ? profile.bio === null : true,
+    timezone: profile?.timezone ?? 'Asia/Shanghai',
+    fields: profile ? profile.module_fields.map(f => ({ ...f, options: [...(f.options ?? [])] })) : [],
+    removeIds: [],
+    dirty: false,
+    submissionStatus: 'idle',
+    operationId: null,
+    lastSavedMessage: null,
+    conflictError: null,
+    conflictServerProfile: null,
+    validationError: null,
+    pendingLeaveTarget: null
+  };
+}
+
+export function syncProfileFormFromServer(
+  state: AppState,
+  profile: ProfileData,
+  forceOverwriteDirty = false
+): void {
+  if (state.profileForm.dirty && !forceOverwriteDirty) {
+    return;
+  }
+  state.profileForm = createInitialProfileFormState(profile);
+}
+
 export function createInitialState(): AppState {
   return {
     authStatus: 'checking',
     user: null,
     capabilities: null,
     bootstrap: null,
+    home: null,
+    profile: null,
+    homePreferences: null,
     loading: false,
     submittingModal: false,
     error: null,
@@ -161,6 +219,8 @@ export function createInitialState(): AppState {
     },
     returnContext: null,
     recordForm: createInitialRecordFormState(),
+    configForm: createInitialConfigFormState(),
+    profileForm: createInitialProfileFormState(),
     exportUi: {
       status: 'idle',
       message: null,

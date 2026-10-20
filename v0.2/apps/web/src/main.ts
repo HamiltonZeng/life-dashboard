@@ -1,10 +1,10 @@
 /// <reference lib="dom" />
 /// <reference lib="dom.iterable" />
 import {
+  createStaticAvatarRenderer,
   DASHBOARD_STYLES,
   escapeHtml,
-  renderIcon,
-  SUBMISSION_STATE_META
+  renderIcon
 } from '../../../packages/ui/src/index.js';
 import { api, ApiClientError, generateUuid, isUnknownNetworkError } from './api.js';
 import {
@@ -17,52 +17,84 @@ import {
 import {
   bindDynamicModalControllers,
   captureActiveFormSnapshot,
+  extractConfigFormDraft,
+  extractProfileFormToState,
   extractRecordFormDraft,
   restoreActiveFormSnapshot
 } from './forms.js';
-import { renderActiveModal,renderSubmissionStatusPill } from './modals.js';
 import {
+  renderActiveModal,
+  renderConfigSubmissionStatusPill,
+  renderSubmissionStatusPill
+} from './modals.js';
+import {
+  buildFallbackHomeFromBootstrap,
   renderAchievementsPanel,
+  renderHomePanel,
   renderMetricsPanel,
+  renderProfileStatusBar,
   renderRecordsPanel,
   renderSettingsPanel,
   renderTasksPanel
 } from './panels.js';
 import {
+  createInitialConfigFormState,
+  createInitialProfileFormState,
   createInitialRecordFormState,
   createInitialState,
   parseRouteFromLocation,
   routeToPanelKey,
+  syncProfileFormFromServer,
   type AppState
 } from './state.js';
 import {
+  buildConfigDraftKey,
   buildRecordDraftKey,
+  clearAiDraft,
+  clearConfigDraft,
+  clearPendingConfigMutation,
   clearPendingMutation,
+  clearProfileDraft,
   clearRecordDraft,
+  computeConfigPayloadSignature,
   computePayloadSignature,
+  getPendingConfigMutation,
   getPendingMutation,
+  getStorageIssue,
+  loadConfigDraft,
+  loadProfileDraft,
   loadRecordDraft,
   loadUiPreferences,
+  prepareConfigMutationEnvelope,
   prepareRecordMutationEnvelope,
+  saveAiDraft,
+  saveConfigDraft,
+  savePendingConfigMutation,
   savePendingMutation,
+  saveProfileDraft,
   saveRecordDraft,
   saveUiPreferences
-  ,getStorageIssue
 } from './storage.js';
 import type {
   AiApplyMode,
   AiBatchRow,
   AiContentType,
+  AiDraftScope,
   AiGenerationRequest,
   AiJobRow,
   AiMode,
+  ConfigMutationKind,
   Field,
+  HomePreferencesInput,
   PanelKey,
   PanelRoute,
+  ProfileData,
+  ProfileInput,
   RecordInput
 } from './types.js';
 
 const state: AppState = createInitialState();
+export const avatarRenderer = createStaticAvatarRenderer();
 
 function persistUiState(): void {
   saveUiPreferences({
@@ -147,7 +179,48 @@ function renderToastsOnly(): void {
 function updateRecordStatusBarOnly(): void {
   const bar = document.querySelector('#ld-form-record .ld-draft-status-bar');
   if (!bar) return;
-  bar.outerHTML=renderSubmissionStatusPill(state);
+  bar.outerHTML = renderSubmissionStatusPill(state);
+}
+
+function updateConfigStatusBarOnly(): void {
+  const bar = document.querySelector('form[data-config-kind] .ld-draft-status-bar');
+  if (!bar) return;
+  bar.outerHTML = renderConfigSubmissionStatusPill(state);
+}
+
+function updateProfileStatusBarOnly(): void {
+  const bar = document.getElementById('ld-profile-status-bar');
+  if (!bar) return;
+  bar.outerHTML = renderProfileStatusBar(state);
+}
+
+function syncAvatarRendererLifecycle(): void {
+  if (typeof document === 'undefined') return;
+  const isHomeStandard =
+    state.authStatus === 'authenticated' &&
+    state.route === '/' &&
+    !state.homePreferences?.minimal_mode;
+  if (!isHomeStandard) {
+    avatarRenderer.pause();
+    avatarRenderer.dispose();
+    return;
+  }
+  const slot = document.getElementById('ld-home-avatar-slot');
+  if (slot) {
+    avatarRenderer.mount(
+      slot,
+      {
+        character_id: state.profile?.id ?? state.user?.id ?? 'local-character',
+        model_asset_ref: null,
+        action_id: 'idle',
+        reduced_motion: state.reducedMotion,
+        version: state.profile?.version ?? 1
+      },
+      {
+        reduced_motion: state.reducedMotion
+      }
+    );
+  }
 }
 
 export function renderModalRegionOnly(preserveInput = false): void {
@@ -161,7 +234,9 @@ export function renderModalRegionOnly(preserveInput = false): void {
   bindDynamicModalControllers(
     state,
     () => renderModalRegionOnly(false),
-    () => updateRecordStatusBarOnly()
+    () => updateRecordStatusBarOnly(),
+    () => updateConfigStatusBarOnly(),
+    () => updateProfileStatusBarOnly()
   );
 }
 
@@ -294,10 +369,53 @@ function prepareRecordFormModal(params: {
   };
 }
 
+function prepareConfigFormModal(
+  kind: ConfigMutationKind,
+  modal: NonNullable<AppState['activeModal']>
+): void {
+  const draftKey = buildConfigDraftKey(kind);
+  const savedDraft = loadConfigDraft(draftKey);
+  const pendingOp = getPendingConfigMutation(draftKey);
+  state.configForm = {
+    draftKey,
+    kind,
+    submissionStatus: pendingOp ? 'unknown_network' : savedDraft ? 'saved_local' : 'idle',
+    operationId: pendingOp ? pendingOp.operationId : null,
+    entityId: pendingOp?.entityId ?? savedDraft?.entityId ?? generateUuid(),
+    restoredFromStorage: Boolean(savedDraft || pendingOp),
+    lastSavedLocalAt: savedDraft?.updatedAt ?? null,
+    conflictError: null,
+    validationError: null
+  };
+  state.modalError = null;
+  state.activeModal = modal;
+}
+
+function shouldGuardProfileUnsavedLeave(nextRoute?: PanelRoute, nextSubTab?: string): boolean {
+  if (state.route !== '/settings' || state.panels.settings.subTab !== 'profile') {
+    return false;
+  }
+  if (!state.profileForm.dirty) return false;
+  if (nextRoute !== undefined && nextRoute !== '/settings') {
+    state.profileForm.pendingLeaveTarget = { kind: 'route', route: nextRoute };
+    renderApp({ preserveModalInput: true });
+    return true;
+  }
+  if (nextSubTab !== undefined && nextSubTab !== 'profile') {
+    state.profileForm.pendingLeaveTarget = { kind: 'subtab', subTab: nextSubTab };
+    renderApp({ preserveModalInput: true });
+    return true;
+  }
+  return false;
+}
+
 function navigateTo(
   route: PanelRoute,
-  options: { pushHistory?: boolean; preserveReturnContext?: boolean } = {}
+  options: { pushHistory?: boolean; preserveReturnContext?: boolean; bypassUnsavedGuard?: boolean } = {}
 ): void {
+  if (!options.bypassUnsavedGuard && shouldGuardProfileUnsavedLeave(route)) {
+    return;
+  }
   saveCurrentScroll();
   if (!options.preserveReturnContext) {
     state.returnContext = null;
@@ -405,8 +523,7 @@ function renderShellAndMain(): string {
 
   let mainContentHtml = '';
   if (state.route === '/') {
-    // P01 & Section 2.2: Logged-in Home page main content area is strictly blank!
-    mainContentHtml = `<main class="ld-main ld-home-blank" id="ld-home-blank" aria-label="首页"></main>`;
+    mainContentHtml = renderHomePanel(state, data, state.home);
   } else if (!data) {
     mainContentHtml = `<main class="ld-main"><div class="ld-panel-container"><div class="ld-card">正在加载面板数据...</div></div></main>`;
   } else if (state.route === '/tasks') {
@@ -446,7 +563,7 @@ function renderShellAndMain(): string {
       </nav>
       <div class="ld-sidebar-footer">
         <div class="ld-user-pill">
-          <span>👤 ${escapeHtml(state.user?.name ?? '本地用户')}</span>
+          <span>👤 ${escapeHtml(state.profile?.nickname ?? state.user?.name ?? '本地用户')}</span>
           <button type="button" class="ld-btn ld-btn-sm" data-action="toggle-theme" title="切换深浅主题">
             ${state.theme === 'dark' ? '🌙' : '☀️'}
           </button>
@@ -504,11 +621,38 @@ export function renderApp(options: { preserveModalInput?: boolean } = {}): void 
   if (snapshot) {
     restoreActiveFormSnapshot(snapshot);
   }
+  syncAvatarRendererLifecycle();
   bindDynamicModalControllers(
     state,
     () => renderModalRegionOnly(false),
-    () => updateRecordStatusBarOnly()
+    () => updateRecordStatusBarOnly(),
+    () => updateConfigStatusBarOnly(),
+    () => updateProfileStatusBarOnly()
   );
+}
+
+async function syncHomeAndProfileQuietly(): Promise<void> {
+  try {
+    const home = await api.getHome();
+    state.home = home;
+    state.profile = home.profile;
+    state.homePreferences = home.preferences;
+    if (state.user) {
+      state.user.name = home.profile.nickname;
+      state.user.timezone = home.profile.timezone;
+    }
+    syncProfileFormFromServer(state, home.profile);
+  } catch (err) {
+    if (err instanceof ApiClientError && err.status === 404) {
+      const fallback = buildFallbackHomeFromBootstrap(state, state.bootstrap);
+      state.home = fallback;
+      state.profile = fallback.profile;
+      state.homePreferences = fallback.preferences;
+      syncProfileFormFromServer(state, fallback.profile);
+      return;
+    }
+    throw err;
+  }
 }
 
 async function refreshBootstrapAndNotify(
@@ -523,6 +667,7 @@ async function refreshBootstrapAndNotify(
   );
   const fresh = await api.getBootstrap();
   state.bootstrap = fresh;
+  await syncHomeAndProfileQuietly().catch(() => {});
   state.error = null;
 
   renderApp({ preserveModalInput });
@@ -782,6 +927,25 @@ async function initializeApp(): Promise<void> {
     const me = await api.getMe();
     state.user = me;
     state.bootstrap = await api.getBootstrap();
+    await syncHomeAndProfileQuietly().catch(() => {});
+    const savedProfileDraft = loadProfileDraft();
+    if (savedProfileDraft) {
+      state.profileForm = {
+        ...createInitialProfileFormState(state.profile),
+        baseVersion: savedProfileDraft.baseVersion,
+        nickname: savedProfileDraft.nickname,
+        bio: savedProfileDraft.bio ?? '',
+        bioIsNull: savedProfileDraft.bio === null,
+        timezone: savedProfileDraft.timezone,
+        fields: savedProfileDraft.upserts ?? [],
+        removeIds: savedProfileDraft.removeIds ?? [],
+        dirty: true,
+        submissionStatus: getPendingConfigMutation(buildConfigDraftKey('profile'))
+          ? 'unknown_network'
+          : 'saved_local',
+        operationId: getPendingConfigMutation(buildConfigDraftKey('profile'))?.operationId ?? null
+      };
+    }
     state.authStatus = 'authenticated';
   } catch (err) {
     if (err instanceof ApiClientError && err.status === 401) {
@@ -798,9 +962,81 @@ async function initializeApp(): Promise<void> {
   }
 }
 
+async function updateHomePreferencesReliably(
+  patch: Omit<HomePreferencesInput, 'base_version'>,
+  summary: string
+): Promise<void> {
+  const currentPrefs = state.homePreferences ?? state.home?.preferences;
+  const baseVersion = currentPrefs?.version ?? 1;
+  const payload: HomePreferencesInput = {
+    base_version: baseVersion,
+    ...patch
+  };
+  const draftKey = buildConfigDraftKey('home-preferences');
+  const sig = computeConfigPayloadSignature('home-preferences', payload);
+  const prepared = prepareConfigMutationEnvelope({
+    draftKey,
+    kind: 'home-preferences',
+    candidateEntityId: state.user?.id ?? 'user-1',
+    candidatePayload: payload,
+    signature: sig,
+    allocateUuid: generateUuid
+  });
+
+  savePendingConfigMutation({
+    draftKey,
+    kind: 'home-preferences',
+    operationId: prepared.operationId,
+    entityId: prepared.entityId,
+    payloadSignature: sig,
+    frozenPayload: prepared.payload,
+    lastError: { code: 'AWAITING_RECEIPT', message: '等待服务器确认' },
+    savedAt: new Date().toISOString()
+  });
+
+  try {
+    const updated = await api.updateHomePreferences(prepared.payload, prepared.operationId);
+    clearPendingConfigMutation(draftKey);
+    state.homePreferences = updated;
+    if (state.home) {
+      state.home.preferences = updated;
+    }
+    await syncHomeAndProfileQuietly().catch(() => {});
+    renderApp({ preserveModalInput: true });
+    pushToast('首页偏好已保存', summary, 'success');
+  } catch (err) {
+    if (!isUnknownNetworkError(err)) {
+      clearPendingConfigMutation(draftKey);
+    }
+    if (err instanceof ApiClientError && err.status === 409) {
+      const srv = (err.details as { current?: typeof state.homePreferences } | undefined)?.current;
+      if (srv) {
+        state.homePreferences = srv;
+        if (state.home) state.home.preferences = srv;
+      }
+      renderApp({ preserveModalInput: true });
+      pushToast('首页偏好版本冲突 (409)', `${err.message}；已同步服务器最新偏好版本`, 'warning');
+      return;
+    }
+    handleApiError(err);
+  }
+}
+
 function setupEventDelegation(): void {
+  window.addEventListener('beforeunload', e => {
+    if (state.profileForm.dirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
   window.addEventListener('popstate', () => {
-    state.route = parseRouteFromLocation(window.location.pathname);
+    const nextRoute = parseRouteFromLocation(window.location.pathname);
+    if (shouldGuardProfileUnsavedLeave(nextRoute)) {
+      window.history.pushState({ route: state.route }, '', state.route);
+      return;
+    }
+    state.route = nextRoute;
     renderApp();
   });
 
@@ -830,6 +1066,150 @@ function setupEventDelegation(): void {
     if (action === 'nav-route') {
       const route = (target.getAttribute('data-route') ?? '/') as PanelRoute;
       navigateTo(route);
+      return;
+    }
+
+    if (action === 'profile-stay') {
+      state.profileForm.pendingLeaveTarget = null;
+      renderApp({ preserveModalInput: true });
+      return;
+    }
+
+    if (action === 'profile-discard-and-leave') {
+      const pendingTarget = state.profileForm.pendingLeaveTarget;
+      clearProfileDraft();
+      clearPendingConfigMutation(buildConfigDraftKey('profile'));
+      state.profileForm = createInitialProfileFormState(state.profile);
+      if (pendingTarget?.kind === 'route') {
+        navigateTo(pendingTarget.route, { bypassUnsavedGuard: true });
+      } else if (pendingTarget?.kind === 'subtab') {
+        state.panels.settings.subTab = pendingTarget.subTab;
+        persistUiState();
+        renderApp();
+      } else {
+        renderApp();
+      }
+      return;
+    }
+
+    if (action === 'save-ai-draft') {
+      const scope = (target.getAttribute('data-ai-scope') ?? 'home') as AiDraftScope;
+      const inputEl = document.getElementById(
+        scope === 'home' ? 'ld-home-ai-input' : 'ld-records-ai-input'
+      ) as HTMLTextAreaElement | null;
+      const text = inputEl?.value ?? '';
+      if (saveAiDraft(scope, text)) {
+        renderApp({ preserveModalInput: true });
+        pushToast('本地 AI 草稿已保存', '已保存在当前浏览器，不会触发模型调用', 'info');
+      } else {
+        pushToast('草稿未保存', getStorageIssue() ?? '浏览器存储不可用', 'warning');
+      }
+      return;
+    }
+
+    if (action === 'clear-ai-draft') {
+      const scope = (target.getAttribute('data-ai-scope') ?? 'home') as AiDraftScope;
+      clearAiDraft(scope);
+      const inputEl = document.getElementById(
+        scope === 'home' ? 'ld-home-ai-input' : 'ld-records-ai-input'
+      ) as HTMLTextAreaElement | null;
+      if (inputEl) inputEl.value = '';
+      renderApp({ preserveModalInput: true });
+      pushToast('已清空本地 AI 草稿', '本地待发送草稿已清除', 'info');
+      return;
+    }
+
+    if (action === 'toggle-minimal-mode') {
+      const currentMinimal = Boolean(
+        state.homePreferences?.minimal_mode ?? state.home?.preferences.minimal_mode
+      );
+      await updateHomePreferencesReliably(
+        { minimal_mode: !currentMinimal },
+        !currentMinimal
+          ? '已开启主页极简模式（原固定顺序与 AI 草稿已保留）'
+          : '已恢复标准主页（固定数值与任务顺序已恢复）'
+      );
+      return;
+    }
+
+    if (action === 'home-open-profile') {
+      state.panels.settings.subTab = 'profile';
+      persistUiState();
+      navigateTo('/settings');
+      return;
+    }
+
+    if (action === 'home-clean-unavailable-pins') {
+      const home = state.home ?? buildFallbackHomeFromBootstrap(state, data);
+      const validMetricIds = (state.homePreferences?.pinned_metric_ids ?? []).filter(id =>
+        home.metrics.some(m => m.id === id)
+      );
+      const validTaskIds = (state.homePreferences?.pinned_task_ids ?? []).filter(id =>
+        (data?.tasks ?? home.tasks).some(
+          t => t.id === id && t.status !== 'cancelled' && t.status !== 'skipped'
+        )
+      );
+      await updateHomePreferencesReliably(
+        {
+          pinned_metric_ids: validMetricIds,
+          pinned_task_ids: validTaskIds
+        },
+        '已清理失效的首页固定引用'
+      );
+      return;
+    }
+
+    if (action === 'home-toggle-pin-metric') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      if (!metricId) return;
+      const current = [...(state.homePreferences?.pinned_metric_ids ?? [])];
+      const next = current.includes(metricId)
+        ? current.filter(id => id !== metricId)
+        : [...current, metricId];
+      await updateHomePreferencesReliably(
+        { pinned_metric_ids: next },
+        current.includes(metricId) ? '已取消固定该数值卡片' : '已将该数值卡片固定到首页'
+      );
+      return;
+    }
+
+    if (action === 'home-move-pin-metric') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      const dir = target.getAttribute('data-dir') ?? 'up';
+      const current = [...(state.homePreferences?.pinned_metric_ids ?? [])];
+      const idx = current.indexOf(metricId);
+      const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+      if (idx >= 0 && swapIdx >= 0 && swapIdx < current.length) {
+        [current[idx], current[swapIdx]] = [current[swapIdx], current[idx]];
+        await updateHomePreferencesReliably({ pinned_metric_ids: current }, '已调整首页数值固定顺序');
+      }
+      return;
+    }
+
+    if (action === 'home-toggle-pin-task') {
+      const taskId = target.getAttribute('data-task-id') ?? '';
+      if (!taskId) return;
+      const current = [...(state.homePreferences?.pinned_task_ids ?? [])];
+      const next = current.includes(taskId)
+        ? current.filter(id => id !== taskId)
+        : [...current, taskId];
+      await updateHomePreferencesReliably(
+        { pinned_task_ids: next },
+        current.includes(taskId) ? '已取消固定该任务卡片' : '已将该任务卡片固定到首页'
+      );
+      return;
+    }
+
+    if (action === 'home-move-pin-task') {
+      const taskId = target.getAttribute('data-task-id') ?? '';
+      const dir = target.getAttribute('data-dir') ?? 'up';
+      const current = [...(state.homePreferences?.pinned_task_ids ?? [])];
+      const idx = current.indexOf(taskId);
+      const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+      if (idx >= 0 && swapIdx >= 0 && swapIdx < current.length) {
+        [current[idx], current[swapIdx]] = [current[swapIdx], current[idx]];
+        await updateHomePreferencesReliably({ pinned_task_ids: current }, '已调整首页任务固定顺序');
+      }
       return;
     }
 
@@ -906,6 +1286,9 @@ function setupEventDelegation(): void {
     if (action === 'panel-subtab') {
       const subTab = target.getAttribute('data-subtab') ?? 'all';
       const key = routeToPanelKey(state.route);
+      if (key === 'settings' && shouldGuardProfileUnsavedLeave(undefined, subTab)) {
+        return;
+      }
       if (key) {
         state.panels[key].subTab = subTab;
         persistUiState();
@@ -926,6 +1309,157 @@ function setupEventDelegation(): void {
         state.activeModal = null;
         state.modalError = null;
         renderApp();
+      }
+      return;
+    }
+
+    if (action === 'discard-config-draft') {
+      const key = state.configForm.draftKey;
+      if (key && getPendingConfigMutation(key)) {
+        pushToast('还有待确认的配置提交', '请先点击确认上次提交；丢弃草稿不能撤销已发送的配置请求。', 'warning');
+        return;
+      }
+      if (key) {
+        clearConfigDraft(key);
+      }
+      state.configForm = {
+        ...createInitialConfigFormState(),
+        draftKey: key,
+        kind: state.configForm.kind,
+        entityId: generateUuid()
+      };
+      renderModalRegionOnly(false);
+      pushToast('本机配置草稿已丢弃', '已清空当前未提交的配置草稿', 'info');
+      return;
+    }
+
+    if (action === 'resume-pending-config') {
+      const kind = (target.getAttribute('data-config-kind') ?? '') as ConfigMutationKind;
+      if (kind === 'profile') {
+        state.panels.settings.subTab = 'profile';
+        persistUiState();
+        navigateTo('/settings');
+      } else if (kind === 'create-module') {
+        prepareConfigFormModal('create-module', { kind: 'create-module' });
+        renderApp();
+      } else if (kind === 'create-template') {
+        prepareConfigFormModal('create-template', {
+          kind: 'create-template',
+          defaultModuleId: state.panels.settings.moduleId
+        });
+        renderApp();
+      } else if (kind === 'create-task') {
+        prepareConfigFormModal('create-task', {
+          kind: 'create-task',
+          defaultModuleId: state.panels.tasks.moduleId
+        });
+        renderApp();
+      } else if (kind === 'create-metric') {
+        prepareConfigFormModal('create-metric', {
+          kind: 'create-metric',
+          defaultModuleId: state.panels.metrics.moduleId
+        });
+        renderApp();
+      } else if (kind === 'create-achievement') {
+        prepareConfigFormModal('create-achievement', {
+          kind: 'create-achievement',
+          defaultModuleId: state.panels.achievements.moduleId
+        });
+        renderApp();
+      }
+      return;
+    }
+
+    if (action === 'profile-add-field' && data) {
+      const form = document.getElementById('ld-form-profile') as HTMLFormElement | null;
+      if (form) extractProfileFormToState(form, state);
+      const selectEl = document.getElementById('ld-profile-add-module-select') as HTMLSelectElement | null;
+      const modId =
+        selectEl?.value ||
+        data.modules.find(m => m.status === 'enabled')?.id ||
+        '';
+      if (!modId) return;
+      const nextIdx = state.profileForm.fields.length + 1;
+      state.profileForm.fields.push({
+        id: generateUuid(),
+        module_id: modId,
+        key: `field_${nextIdx}`,
+        label: `自定义字段 ${nextIdx}`,
+        type: 'text',
+        kind: 'profile',
+        value: '',
+        unit: null,
+        options: []
+      });
+      state.profileForm.dirty = true;
+      state.profileForm.submissionStatus = 'saved_local';
+      renderApp();
+      return;
+    }
+
+    if (action === 'profile-remove-field') {
+      const form = document.getElementById('ld-form-profile') as HTMLFormElement | null;
+      if (form) extractProfileFormToState(form, state);
+      const fieldId = target.getAttribute('data-field-id') ?? '';
+      if (!fieldId) return;
+      state.profileForm.fields = state.profileForm.fields.filter(f => f.id !== fieldId);
+      const existedOnServer = (state.profile?.module_fields ?? []).some(f => f.id === fieldId);
+      if (existedOnServer && !state.profileForm.removeIds.includes(fieldId)) {
+        state.profileForm.removeIds.push(fieldId);
+      }
+      state.profileForm.dirty = true;
+      state.profileForm.submissionStatus = 'saved_local';
+      renderApp();
+      return;
+    }
+
+    if (action === 'profile-reset-draft') {
+      clearProfileDraft();
+      clearPendingConfigMutation(buildConfigDraftKey('profile'));
+      state.profileForm = createInitialProfileFormState(state.profile);
+      renderApp();
+      pushToast('已重置个人资料修改', '已恢复为服务器当前已保存版本', 'info');
+      return;
+    }
+
+    if (action === 'profile-conflict-pull') {
+      try {
+        const freshProfile = await api.getProfile();
+        state.profile = freshProfile;
+        if (state.home) state.home.profile = freshProfile;
+        state.profileForm.conflictServerProfile = freshProfile;
+        renderApp({ preserveModalInput: true });
+        pushToast('已拉取服务器最新个人资料', '请核对差异并点击「采用服务器版本作为编辑基线」后再保存', 'info');
+      } catch (err) {
+        handleApiError(err);
+      }
+      return;
+    }
+
+    if (action === 'profile-conflict-adopt') {
+      const srv = state.profileForm.conflictServerProfile;
+      if (srv) {
+        const form = document.getElementById('ld-form-profile') as HTMLFormElement | null;
+        if (form) extractProfileFormToState(form, state);
+        state.profileForm.baseVersion = srv.version;
+        state.profileForm.conflictError = null;
+        state.profileForm.submissionStatus = 'saved_local';
+        saveProfileDraft({
+          baseVersion: state.profileForm.baseVersion,
+          nickname: state.profileForm.nickname,
+          bio: state.profileForm.bioIsNull ? null : state.profileForm.bio,
+          timezone: state.profileForm.timezone,
+          upserts: state.profileForm.fields,
+          removeIds: state.profileForm.removeIds,
+          rawInputs: {},
+          updatedAt: new Date().toISOString()
+        });
+        renderApp({ preserveModalInput: true });
+        pushToast(
+          `已采用服务器 v${srv.version} 作为编辑基线`,
+          '你当前的本地修改仍完整保留，现在可点击「保存个人资料」提交',
+          'info'
+        );
       }
       return;
     }
@@ -990,7 +1524,9 @@ function setupEventDelegation(): void {
 
     if (action === 'return-context' && state.returnContext) {
       const ctx = state.returnContext;
-      state.panels[ctx.fromPanelKey] = { ...ctx.savedFilter };
+      if (ctx.fromPanelKey !== 'home') {
+        state.panels[ctx.fromPanelKey] = { ...ctx.savedFilter };
+      }
       state.returnContext = null;
       state.activeModal = null;
       state.modalError = null;
@@ -1016,12 +1552,140 @@ function setupEventDelegation(): void {
 
     if (!data) return;
 
+    if (action === 'home-metric-sources') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      const m =
+        state.home?.metrics.find(x => x.id === metricId) ??
+        data.metrics.find(x => x.id === metricId);
+      if (!m) return;
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: '/',
+        fromPanelKey: 'home',
+        savedFilter: { ...state.panels.metrics },
+        label: `来自首页数值「${m.definition.name}」的来源记录核查`
+      };
+      state.panels.records.moduleId = m.module_id;
+      state.panels.records.recordTemplateId = m.record_type_id;
+      state.panels.records.sourceRecordIds = [...m.computed.source_record_ids];
+      state.panels.records.sourceLabel = `首页数值「${m.definition.name}」的 ${m.computed.source_record_ids.length} 条有效样本记录`;
+      navigateTo('/records', { preserveReturnContext: true });
+      return;
+    }
+
+    if (action === 'home-metric-detail') {
+      const metricId = target.getAttribute('data-metric-id') ?? '';
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: '/',
+        fromPanelKey: 'home',
+        savedFilter: { ...state.panels.metrics },
+        label: '来自首页的数值详情查看'
+      };
+      state.panels.metrics.selectedId = metricId;
+      navigateTo('/metrics', { preserveReturnContext: true });
+      state.activeModal = { kind: 'metric-detail', metricId };
+      renderApp();
+      return;
+    }
+
+    if (action === 'home-task-detail') {
+      const taskId = target.getAttribute('data-task-id') ?? '';
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: '/',
+        fromPanelKey: 'home',
+        savedFilter: { ...state.panels.tasks },
+        label: '来自首页的任务来源查看'
+      };
+      state.panels.tasks.selectedId = taskId;
+      navigateTo('/tasks', { preserveReturnContext: true });
+      state.activeModal = { kind: 'task-detail', taskId };
+      renderApp();
+      return;
+    }
+
+    if (action === 'home-task-go-record') {
+      const taskId = target.getAttribute('data-task-id') ?? '';
+      const task =
+        state.home?.tasks.find(t => t.id === taskId) ??
+        data.tasks.find(t => t.id === taskId);
+      if (!task || task.status === 'cancelled' || task.status === 'skipped') return;
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: '/',
+        fromPanelKey: 'home',
+        savedFilter: { ...state.panels.tasks },
+        label: `来自首页任务「${task.definition.title}」`
+      };
+      const tplId =
+        task.definition.record_type_id ??
+        data.record_types.find(rt => rt.module_id === task.module_id)?.id ??
+        '';
+      navigateTo('/records', { preserveReturnContext: true });
+      prepareRecordFormModal({
+        mode: 'create',
+        defaultModuleId: task.module_id,
+        defaultRecordTypeId: tplId,
+        defaultTaskIds: [task.id],
+        fromTaskId: task.id
+      });
+      renderApp();
+      return;
+    }
+
+    if (action === 'home-achievement-evidence') {
+      const achievementId = target.getAttribute('data-achievement-id') ?? '';
+      const award =
+        state.home?.recent_achievements.find(a => a.achievement_id === achievementId) ??
+        data.achievement_awards.find(a => a.achievement_id === achievementId);
+      const def = data.achievement_definitions.find(a => a.id === achievementId);
+      if (!award) return;
+      const achName =
+        (award as { definition?: { name?: string } }).definition?.name ??
+        def?.definition.name ??
+        '成就';
+      const modId =
+        (award as { module_id?: string }).module_id ?? def?.module_id ?? null;
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: '/',
+        fromPanelKey: 'home',
+        savedFilter: { ...state.panels.achievements },
+        label: `来自首页成就「${achName}」的解锁依据记录`
+      };
+      const ids =
+        award.evidence.source_record_ids.length > 0
+          ? award.evidence.source_record_ids
+          : award.original_evidence.source_record_ids;
+      state.panels.records.moduleId = modId;
+      state.panels.records.sourceRecordIds = [...ids];
+      state.panels.records.sourceLabel = `成就「${achName}」的解锁依据记录 (${ids.length} 条)`;
+      navigateTo('/records', { preserveReturnContext: true });
+      return;
+    }
+
+    if (action === 'home-achievement-detail') {
+      const achievementId = target.getAttribute('data-achievement-id') ?? '';
+      saveCurrentScroll();
+      state.returnContext = {
+        fromRoute: '/',
+        fromPanelKey: 'home',
+        savedFilter: { ...state.panels.achievements },
+        label: '来自首页的成就定义查看'
+      };
+      state.panels.achievements.selectedId = achievementId;
+      navigateTo('/achievements', { preserveReturnContext: true });
+      state.activeModal = { kind: 'achievement-detail', achievementId };
+      renderApp();
+      return;
+    }
+
     if (action === 'open-create-task') {
-      state.modalError = null;
-      state.activeModal = {
+      prepareConfigFormModal('create-task', {
         kind: 'create-task',
         defaultModuleId: state.panels.tasks.moduleId
-      };
+      });
       renderApp();
       return;
     }
@@ -1246,11 +1910,10 @@ function setupEventDelegation(): void {
     }
 
     if (action === 'open-create-metric') {
-      state.modalError = null;
-      state.activeModal = {
+      prepareConfigFormModal('create-metric', {
         kind: 'create-metric',
         defaultModuleId: state.panels.metrics.moduleId
-      };
+      });
       renderApp();
       return;
     }
@@ -1327,11 +1990,10 @@ function setupEventDelegation(): void {
     }
 
     if (action === 'open-create-achievement') {
-      state.modalError = null;
-      state.activeModal = {
+      prepareConfigFormModal('create-achievement', {
         kind: 'create-achievement',
         defaultModuleId: state.panels.achievements.moduleId
-      };
+      });
       renderApp();
       return;
     }
@@ -1386,8 +2048,7 @@ function setupEventDelegation(): void {
     }
 
     if (action === 'open-create-module') {
-      state.modalError = null;
-      state.activeModal = { kind: 'create-module' };
+      prepareConfigFormModal('create-module', { kind: 'create-module' });
       renderApp();
       return;
     }
@@ -1401,11 +2062,10 @@ function setupEventDelegation(): void {
     }
 
     if (action === 'open-create-template') {
-      state.modalError = null;
-      state.activeModal = {
+      prepareConfigFormModal('create-template', {
         kind: 'create-template',
         defaultModuleId: state.panels.settings.moduleId
-      };
+      });
       renderApp();
       return;
     }
@@ -1433,6 +2093,7 @@ function setupEventDelegation(): void {
         state.user = me;
         state.capabilities = capabilities;
         state.bootstrap = bootstrap;
+        await syncHomeAndProfileQuietly().catch(() => {});
         state.authStatus = 'authenticated';
         state.loading = false;
         renderApp();
@@ -1697,6 +2358,260 @@ function setupEventDelegation(): void {
 
     if (state.submittingModal) return;
 
+    if (form.id === 'ld-form-profile') {
+      extractProfileFormToState(form, state);
+      const pf = state.profileForm;
+      const draftKey = buildConfigDraftKey('profile');
+      const candidatePayload: ProfileInput = {
+        base_version: pf.baseVersion,
+        nickname: pf.nickname.trim(),
+        bio: pf.bioIsNull ? null : pf.bio,
+        timezone: pf.timezone.trim(),
+        field_upserts: pf.fields.map(f => ({
+          id: f.id,
+          module_id: f.module_id,
+          key: f.key,
+          label: f.label,
+          type: f.type,
+          kind: 'profile' as const,
+          value: f.value,
+          unit: f.unit,
+          options: f.options ?? []
+        })),
+        field_remove_ids: pf.removeIds
+      };
+
+      const sig = computeConfigPayloadSignature('profile', candidatePayload);
+      const prepared = prepareConfigMutationEnvelope({
+        draftKey,
+        kind: 'profile',
+        candidateEntityId: state.profile?.id ?? state.user?.id ?? 'user-1',
+        candidatePayload,
+        signature: sig,
+        allocateUuid: generateUuid
+      });
+      const previous = getPendingConfigMutation<ProfileInput>(draftKey);
+      const pending = {
+        draftKey,
+        kind: 'profile' as const,
+        operationId: prepared.operationId,
+        entityId: prepared.entityId,
+        payloadSignature: previous?.payloadSignature ?? sig,
+        frozenPayload: prepared.payload,
+        lastError: { code: 'AWAITING_RECEIPT', message: '等待服务器确认' },
+        savedAt: previous?.savedAt ?? new Date().toISOString()
+      };
+
+      if (!savePendingConfigMutation(pending)) {
+        pf.submissionStatus = 'validation_error';
+        pf.validationError = {
+          code: 'LOCAL_STORAGE_FAILED',
+          message: getStorageIssue() ?? '未保存本机，尚未发送请求'
+        };
+        renderApp({ preserveModalInput: true });
+        return;
+      }
+
+      state.submittingModal = true;
+      pf.submissionStatus = 'submitting';
+      pf.operationId = prepared.operationId;
+      pf.conflictError = null;
+      pf.validationError = null;
+      pf.lastSavedMessage = null;
+      renderApp({ preserveModalInput: true });
+
+      try {
+        const updatedProfile = await api.updateProfile(prepared.payload, prepared.operationId);
+        state.submittingModal = false;
+        clearPendingConfigMutation(draftKey);
+        clearProfileDraft();
+        state.profile = updatedProfile;
+        if (state.home) state.home.profile = updatedProfile;
+        if (state.user) {
+          state.user.name = updatedProfile.nickname;
+          state.user.timezone = updatedProfile.timezone;
+        }
+        state.profileForm = {
+          ...createInitialProfileFormState(updatedProfile),
+          submissionStatus: 'confirmed_server',
+          lastSavedMessage: `个人资料已保存（服务器版本 v${updatedProfile.version}）`
+        };
+        await syncHomeAndProfileQuietly().catch(() => {});
+        renderApp();
+        pushToast('个人资料已保存', `服务器已确认更新至 v${updatedProfile.version}`, 'success');
+      } catch (err) {
+        state.submittingModal = false;
+        if (isUnknownNetworkError(err)) {
+          const msg = err instanceof Error ? err.message : '网络结果未知';
+          savePendingConfigMutation({
+            ...pending,
+            lastError: { code: 'NETWORK_UNKNOWN', message: msg }
+          });
+          pf.submissionStatus = 'unknown_network';
+          renderApp({ preserveModalInput: true });
+          pushToast(
+            '网络结果未知（已保留草稿）',
+            '未收到服务器回执；点击确认将沿用原 operation_id 确认结果。',
+            'warning'
+          );
+          return;
+        }
+
+        clearPendingConfigMutation(draftKey);
+        pf.operationId = null;
+
+        if (err instanceof ApiClientError && err.status === 409) {
+          pf.submissionStatus = 'conflict_pending';
+          pf.conflictError = {
+            code: err.code,
+            message: err.message,
+            requestId: err.requestId
+          };
+          const srvCurrent = (err.details as { current?: ProfileData } | undefined)?.current;
+          if (srvCurrent) {
+            pf.conflictServerProfile = srvCurrent;
+          }
+          renderApp({ preserveModalInput: true });
+          pushToast(
+            `版本冲突 (${err.code})`,
+            '已保留你当前未保存的本地输入，请核对服务器版本并显式采用基线后重试',
+            'warning'
+          );
+          return;
+        }
+
+        const desc = describeApiError(err);
+        pf.submissionStatus = 'validation_error';
+        pf.validationError = {
+          code: desc.code ?? 'VALIDATION_ERROR',
+          message: desc.message
+        };
+        renderApp({ preserveModalInput: true });
+        pushToast(`资料校验未通过 (${desc.code ?? 'ERROR'})`, desc.message, 'warning');
+      }
+      return;
+    }
+
+    const submitConfigCreationReliably = async <TPayload extends { id: string }>(
+      kind: ConfigMutationKind,
+      buildCandidate: (entityId: string) => TPayload,
+      executeCall: (payload: TPayload, operationId: string) => Promise<{ id: string }>,
+      successLabel: (payload: TPayload) => string,
+      checkUnlocks = false
+    ): Promise<void> => {
+      const draft = extractConfigFormDraft(form, state);
+      const draftKey = draft?.draftKey ?? buildConfigDraftKey(kind);
+      const entityId = draft?.entityId ?? state.configForm.entityId ?? generateUuid();
+      if (draft && !saveConfigDraft(draft)) {
+        state.configForm.submissionStatus = 'validation_error';
+        state.configForm.validationError = {
+          code: 'LOCAL_STORAGE_FAILED',
+          message: getStorageIssue() ?? '未保存本机，尚未发送请求'
+        };
+        renderModalRegionOnly(true);
+        return;
+      }
+
+      const candidatePayload = buildCandidate(entityId);
+      const sig = computeConfigPayloadSignature(kind, candidatePayload);
+      const prepared = prepareConfigMutationEnvelope({
+        draftKey,
+        kind,
+        candidateEntityId: entityId,
+        candidatePayload,
+        signature: sig,
+        allocateUuid: generateUuid
+      });
+      const previous = getPendingConfigMutation<TPayload>(draftKey);
+      const pending = {
+        draftKey,
+        kind,
+        operationId: prepared.operationId,
+        entityId: prepared.entityId,
+        payloadSignature: previous?.payloadSignature ?? sig,
+        frozenPayload: prepared.payload,
+        lastError: { code: 'AWAITING_RECEIPT', message: '等待服务器确认' },
+        savedAt: previous?.savedAt ?? new Date().toISOString()
+      };
+
+      if (!savePendingConfigMutation(pending)) {
+        state.configForm.submissionStatus = 'validation_error';
+        state.configForm.validationError = {
+          code: 'LOCAL_STORAGE_FAILED',
+          message: getStorageIssue() ?? '待确认操作未能保存本机，未发送请求'
+        };
+        renderModalRegionOnly(true);
+        return;
+      }
+
+      state.submittingModal = true;
+      state.configForm.submissionStatus = 'submitting';
+      state.configForm.operationId = prepared.operationId;
+      state.configForm.entityId = prepared.entityId;
+      state.configForm.conflictError = null;
+      state.configForm.validationError = null;
+      state.modalError = null;
+      renderModalRegionOnly(true);
+
+      try {
+        await executeCall(prepared.payload, prepared.operationId);
+      } catch (err) {
+        state.submittingModal = false;
+        if (isUnknownNetworkError(err)) {
+          const errMsg = err instanceof Error ? err.message : '网络结果未知';
+          savePendingConfigMutation({
+            ...pending,
+            lastError: { code: 'NETWORK_UNKNOWN', message: errMsg }
+          });
+          state.configForm.submissionStatus = 'unknown_network';
+          renderModalRegionOnly(true);
+          pushToast(
+            '网络结果未知（已冻结原提交）',
+            '未收到服务器回执；再次点击确认将沿用原 operation_id 与实体 ID，绝不复制重复配置。',
+            'warning'
+          );
+          return;
+        }
+
+        clearPendingConfigMutation(draftKey);
+        state.configForm.operationId = null;
+
+        if (err instanceof ApiClientError && err.status === 409) {
+          state.configForm.submissionStatus = 'conflict_pending';
+          state.configForm.conflictError = {
+            code: err.code,
+            message: err.message,
+            requestId: err.requestId
+          };
+          renderModalRegionOnly(true);
+          pushToast(`配置冲突 (${err.code})`, err.message, 'warning');
+          return;
+        }
+
+        const desc = describeApiError(err);
+        state.configForm.submissionStatus = 'validation_error';
+        state.configForm.validationError = {
+          code: desc.code ?? 'VALIDATION_ERROR',
+          message: desc.message
+        };
+        renderModalRegionOnly(true);
+        pushToast(`校验未通过 (${desc.code ?? 'ERROR'})`, desc.message, 'warning');
+        return;
+      }
+
+      state.submittingModal = false;
+      clearPendingConfigMutation(draftKey);
+      clearConfigDraft(draftKey);
+      state.configForm = createInitialConfigFormState();
+      state.activeModal = null;
+      try {
+        await refreshBootstrapAndNotify(successLabel(prepared.payload), checkUnlocks);
+      } catch {
+        renderApp();
+        pushToast('配置已在服务器确认', '列表刷新失败，请手动刷新查看，无需重复创建。', 'warning');
+      }
+    };
+
     if (form.id === 'ld-form-create-task') {
       const fd = new FormData(form);
       const module_id = String(fd.get('module_id') ?? '');
@@ -1709,7 +2624,10 @@ function setupEventDelegation(): void {
       const timezone = String(fd.get('timezone') ?? 'Asia/Shanghai').trim();
 
       let record_type_id: string | null = null;
-      let acceptance: { kind: 'exists' } | { kind: 'field_gte'; field_key: string; threshold: string } | null = null;
+      let acceptance:
+        | { kind: 'exists' }
+        | { kind: 'field_gte'; field_key: string; threshold: string }
+        | null = null;
 
       if (completion_mode !== 'manual') {
         record_type_id = String(fd.get('record_type_id') ?? '');
@@ -1725,9 +2643,10 @@ function setupEventDelegation(): void {
         }
       }
 
-      state.submittingModal = true;
-      try {
-        await api.createTask({
+      await submitConfigCreationReliably(
+        'create-task',
+        entityId => ({
+          id: entityId,
           module_id,
           title,
           completion_mode,
@@ -1735,14 +2654,10 @@ function setupEventDelegation(): void {
           acceptance,
           business_date: business_date_raw || null,
           timezone
-        });
-        state.submittingModal = false;
-        state.activeModal = null;
-        await refreshBootstrapAndNotify(`已创建任务「${title}」`);
-      } catch (err) {
-        state.submittingModal = false;
-        handleApiError(err, { insideModal: true });
-      }
+        }),
+        (payload, opId) => api.createTask(payload, opId),
+        payload => `已创建任务「${payload.title}」`
+      );
       return;
     }
 
@@ -1766,9 +2681,10 @@ function setupEventDelegation(): void {
       const unit = String(fd.get('unit') ?? '').trim();
       const timezone = String(fd.get('timezone') ?? 'Asia/Shanghai').trim();
 
-      state.submittingModal = true;
-      try {
-        await api.createMetric({
+      await submitConfigCreationReliably(
+        'create-metric',
+        entityId => ({
+          id: entityId,
           module_id,
           record_type_id,
           name,
@@ -1777,14 +2693,10 @@ function setupEventDelegation(): void {
           field_key,
           window: windowVal,
           timezone
-        });
-        state.submittingModal = false;
-        state.activeModal = null;
-        await refreshBootstrapAndNotify(`已创建数值定义「${name}」`);
-      } catch (err) {
-        state.submittingModal = false;
-        handleApiError(err, { insideModal: true });
-      }
+        }),
+        (payload, opId) => api.createMetric(payload, opId),
+        payload => `已创建数值定义「${payload.name}」`
+      );
       return;
     }
 
@@ -1799,23 +2711,21 @@ function setupEventDelegation(): void {
         | 'include_existing'
         | 'from_activation';
 
-      state.submittingModal = true;
-      try {
-        await api.createAchievement({
+      await submitConfigCreationReliably(
+        'create-achievement',
+        entityId => ({
+          id: entityId,
           module_id,
           metric_id,
           name,
           operator,
           threshold,
           history_policy
-        });
-        state.submittingModal = false;
-        state.activeModal = null;
-        await refreshBootstrapAndNotify(`已创建成就定义「${name}」`, true);
-      } catch (err) {
-        state.submittingModal = false;
-        handleApiError(err, { insideModal: true });
-      }
+        }),
+        (payload, opId) => api.createAchievement(payload, opId),
+        payload => `已创建成就定义「${payload.name}」`,
+        true
+      );
       return;
     }
 
@@ -1826,16 +2736,18 @@ function setupEventDelegation(): void {
       const icon = String(fd.get('icon') ?? 'book') as any;
       const color = String(fd.get('color') ?? 'blue') as any;
 
-      state.submittingModal = true;
-      try {
-        await api.createModule({ name, description, icon, color });
-        state.submittingModal = false;
-        state.activeModal = null;
-        await refreshBootstrapAndNotify(`已创建自定义模块「${name}」，现已加入各面板筛选`);
-      } catch (err) {
-        state.submittingModal = false;
-        handleApiError(err, { insideModal: true });
-      }
+      await submitConfigCreationReliably(
+        'create-module',
+        entityId => ({
+          id: entityId,
+          name,
+          description,
+          icon,
+          color
+        }),
+        (payload, opId) => api.createModule(payload, opId),
+        payload => `已创建自定义模块「${payload.name}」，现已加入各面板筛选`
+      );
       return;
     }
 
@@ -1899,16 +2811,17 @@ function setupEventDelegation(): void {
         }
       }
 
-      state.submittingModal = true;
-      try {
-        await api.createRecordType({ module_id, name, fields });
-        state.submittingModal = false;
-        state.activeModal = null;
-        await refreshBootstrapAndNotify(`已创建记录模板「${name}」`);
-      } catch (err) {
-        state.submittingModal = false;
-        handleApiError(err, { insideModal: true });
-      }
+      await submitConfigCreationReliably(
+        'create-template',
+        entityId => ({
+          id: entityId,
+          module_id,
+          name,
+          fields
+        }),
+        (payload, opId) => api.createRecordType(payload, opId),
+        payload => `已创建记录模板「${payload.name}」`
+      );
       return;
     }
   });

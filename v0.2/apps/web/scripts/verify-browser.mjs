@@ -363,19 +363,73 @@ async function main() {
     );
 
     await page.navigate(`${BASE_URL}/`);
-    await page.waitUntil(`document.getElementById('ld-home-blank') !== null`, 'blank home', 20000);
+    await page.waitUntil(
+      `document.getElementById('ld-home-standard') !== null || document.getElementById('ld-home-minimal') !== null`,
+      'v0.2 home panel',
+      20000
+    );
+    // Ensure we start in standard mode for the check
+    const initialMinimal = await page.evaluate(`!!document.getElementById('ld-home-minimal')`);
+    if (initialMinimal) {
+      await page.evaluate(`document.getElementById('ld-home-minimal-toggle-btn')?.click()`);
+      await page.waitUntil(`document.getElementById('ld-home-standard') !== null`, 'switch to standard home', 15000);
+    }
     const home = await page.evaluate(`({
       hasShell: !!document.querySelector('.ld-app-shell'),
-      blank: (document.getElementById('ld-home-blank')?.textContent ?? '').trim() === '',
+      hasStandard: !!document.getElementById('ld-home-standard'),
+      hasAvatarSlot: !!document.getElementById('ld-home-avatar-slot'),
+      hasAiBox: !!document.getElementById('ld-home-ai-box'),
+      aiSendDisabled: document.getElementById('ld-home-ai-send-btn')?.disabled === true,
+      hasMetrics: !!document.getElementById('ld-home-metrics-section'),
+      hasTasks: !!document.getElementById('ld-home-tasks-section'),
+      hasAchievements: !!document.getElementById('ld-home-achievements-section'),
       hasLoginForm: !!document.getElementById('ld-login-form')
     })`);
     collector.check(
-      '登录后首页保持空白',
-      home.hasShell && home.blank && !home.hasLoginForm,
-      home.hasShell && home.blank && !home.hasLoginForm
-        ? 'shell 已挂载，#ld-home-blank 主内容区为空且未回退到登录页'
-        : `shell=${home.hasShell}, blank=${home.blank}, loginForm=${home.hasLoginForm}`
+      '登录后主页标准模式渲染',
+      home.hasShell &&
+        home.hasStandard &&
+        home.hasAvatarSlot &&
+        home.hasAiBox &&
+        home.aiSendDisabled &&
+        home.hasMetrics &&
+        home.hasTasks &&
+        home.hasAchievements &&
+        !home.hasLoginForm,
+      home.hasStandard
+        ? '标准主页 (#ld-home-standard) 已挂载：形象静态槽位、受控禁用 AI 输入框、固定数值、今日/固定任务、近期成就齐全'
+        : JSON.stringify(home)
     );
+
+    // 2b. Minimal mode toggle & persistence across reload
+    await page.evaluate(`(() => {
+      const input = document.getElementById('ld-home-ai-input');
+      if (input) {
+        input.value = '浏览器极简模式草稿保留测试';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      document.getElementById('ld-home-minimal-toggle-btn')?.click();
+    })()`);
+    await page.waitUntil(`document.getElementById('ld-home-minimal') !== null`, 'minimal home mode', 15000);
+    await page.navigate(`${BASE_URL}/`);
+    await page.waitUntil(`document.getElementById('ld-home-minimal') !== null`, 'minimal home persisted after reload', 15000);
+    const minimalCheck = await page.evaluate(`({
+      hasMinimal: !!document.getElementById('ld-home-minimal'),
+      hasStandard: !!document.getElementById('ld-home-standard'),
+      hasAvatarSlot: !!document.getElementById('ld-home-avatar-slot'),
+      draftValue: document.getElementById('ld-home-ai-input')?.value ?? ''
+    })`);
+    collector.check(
+      '主页极简模式切换与刷新保持',
+      minimalCheck.hasMinimal &&
+        !minimalCheck.hasStandard &&
+        !minimalCheck.hasAvatarSlot &&
+        minimalCheck.draftValue === '浏览器极简模式草稿保留测试',
+      `#ld-home-minimal 仅显示居中 AI 框，刷新后保持极简且草稿保留 (${minimalCheck.draftValue})`
+    );
+    // Restore standard mode
+    await page.evaluate(`document.getElementById('ld-home-minimal-toggle-btn')?.click()`);
+    await page.waitUntil(`document.getElementById('ld-home-standard') !== null`, 'restore standard mode', 15000);
 
     // 3. /tasks renders.
     await page.navigate(`${BASE_URL}/tasks`);
@@ -395,7 +449,38 @@ async function main() {
       `${tasks.title.trim()}，${tasks.cards} 个卡片区域，底部导航 ${tasks.dockButtons} 项`
     );
 
-    // 4. Settings AI section renders (click the "AI 设置与自动填充" sub-tab).
+    // 3b. /records disabled AI box renders.
+    await page.navigate(`${BASE_URL}/records`);
+    await page.waitUntil(`document.getElementById('ld-records-ai-box') !== null`, 'records AI box', 20000);
+    const recordsAi = await page.evaluate(`({
+      hasBox: !!document.getElementById('ld-records-ai-box'),
+      sendDisabled: document.getElementById('ld-records-ai-send-btn')?.disabled === true
+    })`);
+    collector.check(
+      '记录页受控禁用 AI 输入框',
+      recordsAi.hasBox && recordsAi.sendDisabled,
+      '#ld-records-ai-box 可见且发送按钮受控禁用'
+    );
+
+    // 4. Settings Profile & AI sections render.
+    await page.navigate(`${BASE_URL}/settings`);
+    await page.waitUntil(
+      `document.querySelector('.ld-panel-title')?.textContent?.includes('设置面板')`,
+      'settings panel title',
+      20000
+    );
+    await page.evaluate(`[...document.querySelectorAll('[data-action="panel-subtab"]')].find(button => button.dataset.subtab === 'profile')?.click()`);
+    await page.waitUntil(`document.getElementById('ld-profile-settings') !== null`, 'settings profile section', 20000);
+    const profileSection = await page.evaluate(`({
+      hasForm: !!document.getElementById('ld-form-profile'),
+      hasSaveBtn: !!document.getElementById('ld-profile-save-btn'),
+      hasAddFieldBtn: !!document.getElementById('ld-profile-add-field-btn')
+    })`);
+    collector.check(
+      '设置面板个人信息详情区',
+      profileSection.hasForm && profileSection.hasSaveBtn && profileSection.hasAddFieldBtn,
+      '#ld-profile-settings 表单、保存按钮与新增自定义字段入口齐全'
+    );
     await page.navigate(`${BASE_URL}/settings`);
     await page.waitUntil(
       `document.querySelector('.ld-panel-title')?.textContent?.includes('设置面板')`,

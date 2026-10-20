@@ -10,6 +10,7 @@ import {
   TASK_STATUS_META,
   type ModuleIconName
 } from '../../../packages/ui/src/index.js';
+import { generateUuid } from './api.js';
 import { renderAiGenerateModal, renderAiResultModal } from './ai-views.js';
 import {
   describeTaskAcceptance,
@@ -19,13 +20,17 @@ import {
 } from './panels.js';
 import type { AppState } from './state.js';
 import {
+  buildConfigDraftKey,
   buildRecordDraftKey,
+  getPendingConfigMutation,
   getPendingMutation,
+  loadConfigDraft,
   loadRecordDraft
 } from './storage.js';
 import type {
   AchievementAwardRow,
   BootstrapData,
+  ConfigMutationKind,
   MetricRow,
   ModuleRow,
   RecordTypeRow
@@ -64,8 +69,8 @@ export function renderSubmissionStatusPill(state: AppState): string {
 
   return `<div class="ld-draft-status-bar" data-submission-status="${escapeHtml(rf.submissionStatus)}">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span class="ld-badge ${badgeClass}">${escapeHtml(rf.validationError?.code==='LOCAL_STORAGE_FAILED'?'未保存本机':meta.label)}</span>
-      <span style="color:var(--ld-text-secondary);">${escapeHtml(rf.validationError?.code==='LOCAL_STORAGE_FAILED'?rf.validationError.message:meta.description)}</span>
+      <span class="ld-badge ${badgeClass}">${escapeHtml(rf.validationError?.code === 'LOCAL_STORAGE_FAILED' ? '未保存本机' : meta.label)}</span>
+      <span style="color:var(--ld-text-secondary);">${escapeHtml(rf.validationError?.code === 'LOCAL_STORAGE_FAILED' ? rf.validationError.message : meta.description)}</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       ${
@@ -82,10 +87,45 @@ export function renderSubmissionStatusPill(state: AppState): string {
   </div>`;
 }
 
+export function renderConfigSubmissionStatusPill(state: AppState): string {
+  const cf = state.configForm;
+  const meta = SUBMISSION_STATE_META[cf.submissionStatus] ?? SUBMISSION_STATE_META.idle;
+  const badgeClass =
+    meta.tone === 'success'
+      ? 'ld-badge-success'
+      : meta.tone === 'warning'
+        ? 'ld-badge-warning'
+        : meta.tone === 'danger'
+          ? 'ld-badge-danger'
+          : meta.tone === 'info'
+            ? 'ld-badge-info'
+            : '';
+
+  return `<div class="ld-draft-status-bar" data-config-submission-status="${escapeHtml(cf.submissionStatus)}" data-submission-status="${escapeHtml(cf.submissionStatus)}">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span class="ld-badge ${badgeClass}">${escapeHtml(cf.validationError?.code === 'LOCAL_STORAGE_FAILED' ? '未保存本机' : meta.label)}</span>
+      <span style="color:var(--ld-text-secondary);">${escapeHtml(cf.validationError?.code === 'LOCAL_STORAGE_FAILED' ? cf.validationError.message : meta.description)}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      ${
+        cf.operationId || cf.entityId
+          ? `<details><summary>提交诊断</summary><code style="font-size:11px;color:var(--ld-text-muted);">${cf.operationId ? `operation_id: ${escapeHtml(cf.operationId.slice(0, 12))}… ` : ''}${cf.entityId ? `entity_id: ${escapeHtml(cf.entityId.slice(0, 12))}…` : ''}</code></details>`
+          : ''
+      }
+      ${
+        cf.restoredFromStorage || cf.submissionStatus === 'saved_local' || cf.submissionStatus === 'unknown_network'
+          ? `<button type="button" class="ld-btn ld-btn-sm" data-action="discard-config-draft">丢弃本地草稿</button>`
+          : ''
+      }
+    </div>
+  </div>`;
+}
+
 function renderModalConflictPanel(state: AppState): string {
   const rfConflict = state.recordForm.conflictError;
+  const cfConflict = state.configForm.conflictError;
   const modalErr = state.modalError;
-  const conflict = rfConflict ?? modalErr;
+  const conflict = rfConflict ?? cfConflict ?? modalErr;
   if (!conflict) return '';
 
   const serverRec = state.recordForm.conflictServerRecord;
@@ -96,7 +136,7 @@ function renderModalConflictPanel(state: AppState): string {
       </div>
       <div style="display:flex;gap:6px;">
         <button type="button" class="ld-btn ld-btn-sm" data-action="conflict-pull-latest">拉取服务器最新版本</button>
-        ${serverRec?'<button type="button" class="ld-btn ld-btn-sm" data-action="conflict-adopt-version">采用此版本作为编辑基线</button>':''}
+        ${serverRec ? '<button type="button" class="ld-btn ld-btn-sm" data-action="conflict-adopt-version">采用此版本作为编辑基线</button>' : ''}
       </div>
     </div>
     <div style="color:var(--ld-text-secondary);font-size:12px;">
@@ -110,6 +150,59 @@ function renderModalConflictPanel(state: AppState): string {
   </div>`;
 }
 
+function resolveConfigModalContext(state: AppState, kind: ConfigMutationKind) {
+  const draftKey = buildConfigDraftKey(kind);
+  const savedDraft = loadConfigDraft(draftKey);
+  const pendingOp = getPendingConfigMutation(draftKey);
+  const entityId =
+    pendingOp?.entityId ??
+    (state.configForm.kind === kind && state.configForm.entityId ? state.configForm.entityId : null) ??
+    savedDraft?.entityId ??
+    generateUuid();
+
+  if (state.configForm.kind !== kind || state.configForm.draftKey !== draftKey) {
+    state.configForm = {
+      draftKey,
+      kind,
+      submissionStatus: pendingOp ? 'unknown_network' : savedDraft ? 'saved_local' : 'idle',
+      operationId: pendingOp ? pendingOp.operationId : null,
+      entityId,
+      restoredFromStorage: Boolean(savedDraft || pendingOp),
+      lastSavedLocalAt: savedDraft?.updatedAt ?? null,
+      conflictError: null,
+      validationError: null
+    };
+  } else {
+    state.configForm.entityId = entityId;
+    if (pendingOp) {
+      state.configForm.submissionStatus = 'unknown_network';
+      state.configForm.operationId = pendingOp.operationId;
+    }
+  }
+
+  const pendingBanner = pendingOp
+    ? `<div class="ld-return-banner" style="background:var(--ld-warning-soft);border-color:rgba(245,158,11,0.5);" data-config-pending-banner="${escapeHtml(kind)}">
+        <div>
+          <strong>上次配置创建结果待确认：</strong>请先确认上次提交；直接点击确认将沿用原 <code>operation_id</code> 与实体 ID (<code>${escapeHtml(entityId.slice(0, 8))}…</code>)，不会复制出重复配置。
+        </div>
+      </div>`
+    : '';
+
+  const valError = state.configForm.validationError;
+  const valBanner = valError
+    ? `<div class="ld-error-banner" role="alert"><span><strong>${escapeHtml(valError.code)}</strong>：${escapeHtml(valError.message)}（已保留你当前填写的输入）</span></div>`
+    : '';
+
+  return {
+    draftKey,
+    savedDraft,
+    pendingOp,
+    entityId,
+    pendingBanner,
+    valBanner
+  };
+}
+
 export function renderActiveModal(state: AppState, data: BootstrapData): string {
   const modal = state.activeModal;
   if (!modal) return '';
@@ -118,21 +211,30 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
   const userTz = state.user?.timezone ?? 'Asia/Shanghai';
 
   if (modal.kind === 'create-task') {
-    const selectedModId = modal.defaultModuleId ?? enabledModules[0]?.id ?? '';
+    const ctx = resolveConfigModalContext(state, 'create-task');
+    const raw = ctx.savedDraft?.rawInputs ?? {};
+    const selectedModId = raw.module_id ?? modal.defaultModuleId ?? enabledModules[0]?.id ?? '';
+    const selectedMode = raw.completion_mode ?? 'record_required';
     const templates = data.record_types.filter(rt => rt.module_id === selectedModId);
-    const firstTpl = templates[0];
-    const numericFields = (firstTpl?.fields ?? []).filter(f =>
+    const selectedTplId = raw.record_type_id ?? templates[0]?.id ?? '';
+    const activeTpl = templates.find(rt => rt.id === selectedTplId) ?? templates[0];
+    const numericFields = (activeTpl?.fields ?? []).filter(f =>
       ['integer', 'decimal'].includes(f.type)
     );
+    const selectedAccKind = raw.acceptance_kind ?? 'exists';
+    const selectedFieldKey = raw.field_key ?? numericFields[0]?.key ?? '';
 
     return `<div class="ld-modal-backdrop" data-action="close-modal-backdrop">
-      <form class="ld-modal" id="ld-form-create-task">
+      <form class="ld-modal" id="ld-form-create-task" data-config-kind="create-task" data-draft-key="${escapeHtml(ctx.draftKey)}" data-entity-id="${escapeHtml(ctx.entityId)}">
         <div class="ld-modal-header">
           <h2 class="ld-modal-title">新建任务实例</h2>
           <button type="button" class="ld-btn ld-btn-sm" data-action="close-modal">✕</button>
         </div>
         <div class="ld-modal-body">
+          ${renderConfigSubmissionStatusPill(state)}
           ${renderModalConflictPanel(state)}
+          ${ctx.valBanner}
+          ${ctx.pendingBanner}
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">所属模块 *</span>
@@ -148,66 +250,71 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
             <label class="ld-field">
               <span class="ld-label">完成方式 *</span>
               <select class="ld-select" name="completion_mode" id="ld-task-mode-select" required>
-                <option value="record_required">必须关联记录 (record_required)</option>
-                <option value="record_optional">记录可选 (record_optional)</option>
-                <option value="manual">手动完成 (manual)</option>
+                <option value="record_required" ${selectedMode === 'record_required' ? 'selected' : ''}>必须关联记录 (record_required)</option>
+                <option value="record_optional" ${selectedMode === 'record_optional' ? 'selected' : ''}>记录可选 (record_optional)</option>
+                <option value="manual" ${selectedMode === 'manual' ? 'selected' : ''}>手动完成 (manual)</option>
               </select>
             </label>
           </div>
           <label class="ld-field">
             <span class="ld-label">任务标题 * <span class="ld-label-hint">1~100 字符，如「完成一次 Python 练习」</span></span>
-            <input class="ld-input" type="text" name="title" maxlength="100" required placeholder="输入任务标题" />
+            <input class="ld-input" type="text" name="title" maxlength="100" value="${escapeHtml(raw.title ?? '')}" required placeholder="输入任务标题" />
           </label>
-          <div id="ld-task-binding-group" class="ld-form-grid" style="padding:12px;border-radius:var(--ld-radius-md);background:var(--ld-bg-elevated);border:1px solid var(--ld-border);">
+          <div id="ld-task-binding-group" class="ld-form-grid" style="display:${selectedMode === 'manual' ? 'none' : 'flex'};padding:12px;border-radius:var(--ld-radius-md);background:var(--ld-bg-elevated);border:1px solid var(--ld-border);">
             <div class="ld-form-row">
               <label class="ld-field">
                 <span class="ld-label">关联记录模板 *</span>
                 <select class="ld-select" name="record_type_id" id="ld-task-template-select">
                   ${templates
-                    .map(rt => `<option value="${escapeHtml(rt.id)}">${escapeHtml(rt.name)}</option>`)
+                    .map(
+                      rt =>
+                        `<option value="${escapeHtml(rt.id)}" ${rt.id === selectedTplId ? 'selected' : ''}>${escapeHtml(rt.name)}</option>`
+                    )
                     .join('')}
                 </select>
               </label>
               <label class="ld-field">
                 <span class="ld-label">验收规则类型 *</span>
                 <select class="ld-select" name="acceptance_kind" id="ld-task-acceptance-kind">
-                  <option value="exists">存在有效关联记录 (exists)</option>
-                  <option value="field_gte" ${numericFields.length === 0 ? 'disabled' : ''}>指定数值字段达到门槛 (field_gte)</option>
+                  <option value="exists" ${selectedAccKind === 'exists' ? 'selected' : ''}>存在有效关联记录 (exists)</option>
+                  <option value="field_gte" ${numericFields.length === 0 ? 'disabled' : ''} ${selectedAccKind === 'field_gte' ? 'selected' : ''}>指定数值字段达到门槛 (field_gte)</option>
                 </select>
               </label>
             </div>
-            <div id="ld-task-threshold-group" class="ld-form-row" style="display:none;">
+            <div id="ld-task-threshold-group" class="ld-form-row" style="display:${selectedMode !== 'manual' && selectedAccKind === 'field_gte' ? 'grid' : 'none'};">
               <label class="ld-field">
                 <span class="ld-label">目标数值字段 *</span>
                 <select class="ld-select" name="field_key" id="ld-task-field-select">
                   ${numericFields
                     .map(
                       f =>
-                        `<option value="${escapeHtml(f.key)}">${escapeHtml(f.label)} (${escapeHtml(f.key)}${f.unit ? ` / ${escapeHtml(f.unit)}` : ''})</option>`
+                        `<option value="${escapeHtml(f.key)}" ${f.key === selectedFieldKey ? 'selected' : ''}>${escapeHtml(f.label)} (${escapeHtml(f.key)}${f.unit ? ` / ${escapeHtml(f.unit)}` : ''})</option>`
                     )
                     .join('')}
                 </select>
               </label>
               <label class="ld-field">
                 <span class="ld-label">单条记录达标门槛 * <span class="ld-label-hint">十进制数字，如 10</span></span>
-                <input class="ld-input" type="text" name="threshold" value="10" placeholder="例如 10" />
+                <input class="ld-input" type="text" name="threshold" value="${escapeHtml(raw.threshold ?? '10')}" placeholder="例如 10" />
               </label>
             </div>
           </div>
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">计划业务日期 <span class="ld-label-hint">可留空表示不限日期</span></span>
-              <input class="ld-input" type="date" name="business_date" />
+              <input class="ld-input" type="date" name="business_date" value="${escapeHtml(raw.business_date ?? '')}" />
             </label>
             <label class="ld-field">
               <span class="ld-label">时区 (IANA) *</span>
-              <input class="ld-input" type="text" name="timezone" value="${escapeHtml(userTz)}" required />
+              <input class="ld-input" type="text" name="timezone" value="${escapeHtml(raw.timezone ?? userTz)}" required />
             </label>
           </div>
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" ${state.submittingModal ? 'disabled' : ''}>${state.submittingModal ? '正在创建…' : '创建任务'}</button>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal ? 'disabled' : ''}>
+            ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建任务'}
+          </button>
         </div>
       </form>
     </div>`;
@@ -369,7 +476,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">所属模块 *</span>
-              <select class="ld-select" name="module_id" id="ld-record-module-select" ${modal.mode === 'edit'||pendingOp ? 'disabled' : ''} required>
+              <select class="ld-select" name="module_id" id="ld-record-module-select" ${modal.mode === 'edit' || pendingOp ? 'disabled' : ''} required>
                 ${enabledModules
                   .map(
                     m =>
@@ -380,7 +487,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
             </label>
             <label class="ld-field">
               <span class="ld-label">记录模板 *</span>
-              <select class="ld-select" name="record_type_id" id="ld-record-template-select" ${modal.mode === 'edit'||pendingOp ? 'disabled' : ''} required>
+              <select class="ld-select" name="record_type_id" id="ld-record-template-select" ${modal.mode === 'edit' || pendingOp ? 'disabled' : ''} required>
                 ${data.record_types
                   .filter(rt => rt.module_id === actualModId)
                   .map(
@@ -570,21 +677,30 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
   }
 
   if (modal.kind === 'create-metric') {
-    const selectedModId = modal.defaultModuleId ?? enabledModules[0]?.id ?? '';
+    const ctx = resolveConfigModalContext(state, 'create-metric');
+    const raw = ctx.savedDraft?.rawInputs ?? {};
+    const selectedModId = raw.module_id ?? modal.defaultModuleId ?? enabledModules[0]?.id ?? '';
     const templates = data.record_types.filter(rt => rt.module_id === selectedModId);
-    const firstTpl = templates[0];
-    const numericFields = (firstTpl?.fields ?? []).filter(f =>
+    const selectedTplId = raw.record_type_id ?? templates[0]?.id ?? '';
+    const activeTpl = templates.find(rt => rt.id === selectedTplId) ?? templates[0];
+    const numericFields = (activeTpl?.fields ?? []).filter(f =>
       ['integer', 'decimal'].includes(f.type)
     );
+    const selectedAgg = raw.aggregation ?? 'count';
+    const selectedWin = raw.window ?? 'week';
+    const selectedFieldKey = raw.field_key ?? numericFields[0]?.key ?? '';
 
     return `<div class="ld-modal-backdrop" data-action="close-modal-backdrop">
-      <form class="ld-modal" id="ld-form-create-metric">
+      <form class="ld-modal" id="ld-form-create-metric" data-config-kind="create-metric" data-draft-key="${escapeHtml(ctx.draftKey)}" data-entity-id="${escapeHtml(ctx.entityId)}">
         <div class="ld-modal-header">
           <h2 class="ld-modal-title">新建数值定义</h2>
           <button type="button" class="ld-btn ld-btn-sm" data-action="close-modal">✕</button>
         </div>
         <div class="ld-modal-body">
+          ${renderConfigSubmissionStatusPill(state)}
           ${renderModalConflictPanel(state)}
+          ${ctx.valBanner}
+          ${ctx.pendingBanner}
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">所属模块 *</span>
@@ -601,60 +717,65 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
               <span class="ld-label">来源记录模板 *</span>
               <select class="ld-select" name="record_type_id" id="ld-metric-template-select" required>
                 ${templates
-                  .map(rt => `<option value="${escapeHtml(rt.id)}">${escapeHtml(rt.name)}</option>`)
+                  .map(
+                    rt =>
+                      `<option value="${escapeHtml(rt.id)}" ${rt.id === selectedTplId ? 'selected' : ''}>${escapeHtml(rt.name)}</option>`
+                  )
                   .join('')}
               </select>
             </label>
           </div>
           <label class="ld-field">
             <span class="ld-label">数值名称 * <span class="ld-label-hint">如「本周学习时长」或「累计学习次数」</span></span>
-            <input class="ld-input" type="text" name="name" maxlength="80" required placeholder="输入数值指标名称" />
+            <input class="ld-input" type="text" name="name" maxlength="80" value="${escapeHtml(raw.name ?? '')}" required placeholder="输入数值指标名称" />
           </label>
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">聚合方式 *</span>
               <select class="ld-select" name="aggregation" id="ld-metric-agg-select" required>
-                <option value="count">计数 (count) — 统计唯一已确认记录条数</option>
-                <option value="sum" ${numericFields.length === 0 ? 'disabled' : ''}>求和 (sum) — 需选择数值字段</option>
-                <option value="avg" ${numericFields.length === 0 ? 'disabled' : ''}>均值 (avg) — 需选择数值字段</option>
-                <option value="latest" ${numericFields.length === 0 ? 'disabled' : ''}>最新值 (latest) — 需选择数值字段</option>
+                <option value="count" ${selectedAgg === 'count' ? 'selected' : ''}>计数 (count) — 统计唯一已确认记录条数</option>
+                <option value="sum" ${numericFields.length === 0 ? 'disabled' : ''} ${selectedAgg === 'sum' ? 'selected' : ''}>求和 (sum) — 需选择数值字段</option>
+                <option value="avg" ${numericFields.length === 0 ? 'disabled' : ''} ${selectedAgg === 'avg' ? 'selected' : ''}>均值 (avg) — 需选择数值字段</option>
+                <option value="latest" ${numericFields.length === 0 ? 'disabled' : ''} ${selectedAgg === 'latest' ? 'selected' : ''}>最新值 (latest) — 需选择数值字段</option>
               </select>
             </label>
             <label class="ld-field">
               <span class="ld-label">时间窗口 *</span>
               <select class="ld-select" name="window" required>
-                <option value="week">本周 (week，周一起)</option>
-                <option value="day">今日 (day，自然日)</option>
-                <option value="month">本月 (month，自然月)</option>
-                <option value="all_time">累计 (all_time)</option>
+                <option value="week" ${selectedWin === 'week' ? 'selected' : ''}>本周 (week，周一起)</option>
+                <option value="day" ${selectedWin === 'day' ? 'selected' : ''}>今日 (day，自然日)</option>
+                <option value="month" ${selectedWin === 'month' ? 'selected' : ''}>本月 (month，自然月)</option>
+                <option value="all_time" ${selectedWin === 'all_time' ? 'selected' : ''}>累计 (all_time)</option>
               </select>
             </label>
           </div>
           <div class="ld-form-row">
-            <label class="ld-field" id="ld-metric-field-group" style="display:none;">
+            <label class="ld-field" id="ld-metric-field-group" style="display:${selectedAgg === 'count' ? 'none' : 'flex'};">
               <span class="ld-label">聚合数值字段 *</span>
               <select class="ld-select" name="field_key" id="ld-metric-field-select">
                 ${numericFields
                   .map(
                     f =>
-                      `<option value="${escapeHtml(f.key)}" data-unit="${escapeHtml(f.unit ?? '')}">${escapeHtml(f.label)} (${escapeHtml(f.key)}${f.unit ? ` / 单位:${escapeHtml(f.unit)}` : ''})</option>`
+                      `<option value="${escapeHtml(f.key)}" data-unit="${escapeHtml(f.unit ?? '')}" ${f.key === selectedFieldKey ? 'selected' : ''}>${escapeHtml(f.label)} (${escapeHtml(f.key)}${f.unit ? ` / 单位:${escapeHtml(f.unit)}` : ''})</option>`
                   )
                   .join('')}
               </select>
             </label>
             <label class="ld-field">
               <span class="ld-label">单位 * <span class="ld-label-hint">sum/avg/latest 必须与字段单位一致</span></span>
-              <input class="ld-input" type="text" name="unit" id="ld-metric-unit-input" value="次" maxlength="30" required />
+              <input class="ld-input" type="text" name="unit" id="ld-metric-unit-input" value="${escapeHtml(raw.unit ?? '次')}" maxlength="30" required />
             </label>
           </div>
           <label class="ld-field">
             <span class="ld-label">统计时区 (IANA) *</span>
-            <input class="ld-input" type="text" name="timezone" value="${escapeHtml(userTz)}" required />
+            <input class="ld-input" type="text" name="timezone" value="${escapeHtml(raw.timezone ?? userTz)}" required />
           </label>
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" ${state.submittingModal ? 'disabled' : ''}>创建数值定义</button>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal ? 'disabled' : ''}>
+            ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建数值定义'}
+          </button>
         </div>
       </form>
     </div>`;
@@ -725,17 +846,25 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
   }
 
   if (modal.kind === 'create-achievement') {
-    const selectedModId = modal.defaultModuleId ?? enabledModules[0]?.id ?? '';
+    const ctx = resolveConfigModalContext(state, 'create-achievement');
+    const raw = ctx.savedDraft?.rawInputs ?? {};
+    const selectedModId = raw.module_id ?? modal.defaultModuleId ?? enabledModules[0]?.id ?? '';
     const modMetrics = data.metrics.filter(m => m.module_id === selectedModId);
+    const selectedMetricId = raw.metric_id ?? modMetrics[0]?.id ?? '';
+    const selectedOp = raw.operator ?? 'gte';
+    const selectedPolicy = raw.history_policy ?? 'include_existing';
 
     return `<div class="ld-modal-backdrop" data-action="close-modal-backdrop">
-      <form class="ld-modal" id="ld-form-create-achievement">
+      <form class="ld-modal" id="ld-form-create-achievement" data-config-kind="create-achievement" data-draft-key="${escapeHtml(ctx.draftKey)}" data-entity-id="${escapeHtml(ctx.entityId)}">
         <div class="ld-modal-header">
           <h2 class="ld-modal-title">新建成就定义</h2>
           <button type="button" class="ld-btn ld-btn-sm" data-action="close-modal">✕</button>
         </div>
         <div class="ld-modal-body">
+          ${renderConfigSubmissionStatusPill(state)}
           ${renderModalConflictPanel(state)}
+          ${ctx.valBanner}
+          ${ctx.pendingBanner}
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">所属模块 *</span>
@@ -757,7 +886,7 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
                     : modMetrics
                         .map(
                           m =>
-                            `<option value="${escapeHtml(m.id)}">${escapeHtml(m.definition.name)} (${escapeHtml(m.definition.unit)})</option>`
+                            `<option value="${escapeHtml(m.id)}" ${m.id === selectedMetricId ? 'selected' : ''}>${escapeHtml(m.definition.name)} (${escapeHtml(m.definition.unit)})</option>`
                         )
                         .join('')
                 }
@@ -766,32 +895,34 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
           </div>
           <label class="ld-field">
             <span class="ld-label">成就名称 * <span class="ld-label-hint">如「迈出第一步」</span></span>
-            <input class="ld-input" type="text" name="name" maxlength="80" required placeholder="输入成就名称" />
+            <input class="ld-input" type="text" name="name" maxlength="80" value="${escapeHtml(raw.name ?? '')}" required placeholder="输入成就名称" />
           </label>
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">比较运算符 *</span>
               <select class="ld-select" name="operator" required>
-                <option value="gte">大于等于 (≥ gte)</option>
-                <option value="lte">小于等于 (≤ lte)</option>
+                <option value="gte" ${selectedOp === 'gte' ? 'selected' : ''}>大于等于 (≥ gte)</option>
+                <option value="lte" ${selectedOp === 'lte' ? 'selected' : ''}>小于等于 (≤ lte)</option>
               </select>
             </label>
             <label class="ld-field">
               <span class="ld-label">目标门槛 (十进制字符串) *</span>
-              <input class="ld-input" type="text" name="threshold" value="1" required placeholder="例如 1" />
+              <input class="ld-input" type="text" name="threshold" value="${escapeHtml(raw.threshold ?? '1')}" required placeholder="例如 1" />
             </label>
           </div>
           <label class="ld-field">
             <span class="ld-label">历史记录范围策略 (history_policy) *</span>
             <select class="ld-select" name="history_policy" required>
-              <option value="include_existing">允许基于已确认、未删除的历史记录计算进度 (include_existing)</option>
-              <option value="from_activation">仅统计本成就创建之后发生的记录 (from_activation)</option>
+              <option value="include_existing" ${selectedPolicy === 'include_existing' ? 'selected' : ''}>允许基于已确认、未删除的历史记录计算进度 (include_existing)</option>
+              <option value="from_activation" ${selectedPolicy === 'from_activation' ? 'selected' : ''}>仅统计本成就创建之后发生的记录 (from_activation)</option>
             </select>
           </label>
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" ${modMetrics.length === 0 || state.submittingModal ? 'disabled' : ''}>创建成就定义</button>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${(modMetrics.length === 0 && !ctx.pendingOp) || state.submittingModal ? 'disabled' : ''}>
+            ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建成就定义'}
+          </button>
         </div>
       </form>
     </div>`;
@@ -845,31 +976,41 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
   }
 
   if (modal.kind === 'create-module') {
+    const ctx = resolveConfigModalContext(state, 'create-module');
+    const raw = ctx.savedDraft?.rawInputs ?? {};
     const iconOptions = Object.entries(MODULE_ICON_LABELS) as Array<[ModuleIconName, string]>;
     const colorOptions = Object.values(MODULE_COLORS);
+    const selectedIcon = raw.icon ?? 'book';
+    const selectedColor = raw.color ?? 'blue';
 
     return `<div class="ld-modal-backdrop" data-action="close-modal-backdrop">
-      <form class="ld-modal" id="ld-form-create-module">
+      <form class="ld-modal" id="ld-form-create-module" data-config-kind="create-module" data-draft-key="${escapeHtml(ctx.draftKey)}" data-entity-id="${escapeHtml(ctx.entityId)}">
         <div class="ld-modal-header">
           <h2 class="ld-modal-title">新建自定义模块</h2>
           <button type="button" class="ld-btn ld-btn-sm" data-action="close-modal">✕</button>
         </div>
         <div class="ld-modal-body">
+          ${renderConfigSubmissionStatusPill(state)}
           ${renderModalConflictPanel(state)}
+          ${ctx.valBanner}
+          ${ctx.pendingBanner}
           <label class="ld-field">
             <span class="ld-label">模块名称 * <span class="ld-label-hint">如「语言学习」</span></span>
-            <input class="ld-input" type="text" name="name" maxlength="60" required placeholder="输入新模块名称" />
+            <input class="ld-input" type="text" name="name" maxlength="60" value="${escapeHtml(raw.name ?? '')}" required placeholder="输入新模块名称" />
           </label>
           <label class="ld-field">
             <span class="ld-label">模块说明</span>
-            <textarea class="ld-textarea" name="description" maxlength="1000" placeholder="描述该模块关注的日常记录、任务与成果"></textarea>
+            <textarea class="ld-textarea" name="description" maxlength="1000" placeholder="描述该模块关注的日常记录、任务与成果">${escapeHtml(raw.description ?? '')}</textarea>
           </label>
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">图标 *</span>
               <select class="ld-select" name="icon" required>
                 ${iconOptions
-                  .map(([k, label]) => `<option value="${k}">${escapeHtml(label)} (${k})</option>`)
+                  .map(
+                    ([k, label]) =>
+                      `<option value="${k}" ${k === selectedIcon ? 'selected' : ''}>${escapeHtml(label)} (${k})</option>`
+                  )
                   .join('')}
               </select>
             </label>
@@ -877,7 +1018,10 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
               <span class="ld-label">主题色 *</span>
               <select class="ld-select" name="color" required>
                 ${colorOptions
-                  .map(c => `<option value="${c.key}">${escapeHtml(c.label)} (${c.key})</option>`)
+                  .map(
+                    c =>
+                      `<option value="${c.key}" ${c.key === selectedColor ? 'selected' : ''}>${escapeHtml(c.label)} (${c.key})</option>`
+                  )
                   .join('')}
               </select>
             </label>
@@ -885,7 +1029,9 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" ${state.submittingModal ? 'disabled' : ''}>创建模块</button>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal ? 'disabled' : ''}>
+            ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建模块'}
+          </button>
         </div>
       </form>
     </div>`;
@@ -924,15 +1070,24 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
   }
 
   if (modal.kind === 'create-template') {
-    const selectedModId = modal.defaultModuleId ?? enabledModules[0]?.id ?? '';
+    const ctx = resolveConfigModalContext(state, 'create-template');
+    const raw = ctx.savedDraft?.rawInputs ?? {};
+    const selectedModId = raw.module_id ?? modal.defaultModuleId ?? enabledModules[0]?.id ?? '';
+    const f1Type = raw.f1_type ?? 'text';
+    const includeF2 = raw.include_f2 !== 'false';
+    const f2Type = raw.f2_type ?? 'integer';
+
     return `<div class="ld-modal-backdrop" data-action="close-modal-backdrop">
-      <form class="ld-modal" id="ld-form-create-template">
+      <form class="ld-modal" id="ld-form-create-template" data-config-kind="create-template" data-draft-key="${escapeHtml(ctx.draftKey)}" data-entity-id="${escapeHtml(ctx.entityId)}">
         <div class="ld-modal-header">
           <h2 class="ld-modal-title">新建通用记录模板</h2>
           <button type="button" class="ld-btn ld-btn-sm" data-action="close-modal">✕</button>
         </div>
         <div class="ld-modal-body">
+          ${renderConfigSubmissionStatusPill(state)}
           ${renderModalConflictPanel(state)}
+          ${ctx.valBanner}
+          ${ctx.pendingBanner}
           <div class="ld-form-row">
             <label class="ld-field">
               <span class="ld-label">所属模块 *</span>
@@ -947,62 +1102,64 @@ export function renderActiveModal(state: AppState, data: BootstrapData): string 
             </label>
             <label class="ld-field">
               <span class="ld-label">模板名称 * <span class="ld-label-hint">如「阅读笔记」或「语言练习」</span></span>
-              <input class="ld-input" type="text" name="name" maxlength="60" required placeholder="输入记录模板名称" />
+              <input class="ld-input" type="text" name="name" maxlength="60" value="${escapeHtml(raw.name ?? '')}" required placeholder="输入记录模板名称" />
             </label>
           </div>
           <div style="padding:12px;border-radius:var(--ld-radius-md);background:var(--ld-bg-elevated);border:1px solid var(--ld-border);" class="ld-form-grid">
-            <div style="font-weight:600;">字段 1（主内容字段，必填）</div>
+            <div style="font-weight:600;">字段 1（主内容字段，必填，支持合法业务字段名如 session）</div>
             <div class="ld-form-row">
               <label class="ld-field">
-                <span class="ld-label">字段 key * <span class="ld-label-hint">小写字母开头，如 topic</span></span>
-                <input class="ld-input" type="text" name="f1_key" value="topic" required pattern="^[a-z][a-z0-9_]{0,63}$" />
+                <span class="ld-label">字段 key * <span class="ld-label-hint">小写字母开头，如 topic 或 session</span></span>
+                <input class="ld-input" type="text" name="f1_key" value="${escapeHtml(raw.f1_key ?? 'topic')}" required pattern="^[a-z][a-z0-9_]{0,63}$" />
               </label>
               <label class="ld-field">
                 <span class="ld-label">显示名称 (label) *</span>
-                <input class="ld-input" type="text" name="f1_label" value="实际内容" required />
+                <input class="ld-input" type="text" name="f1_label" value="${escapeHtml(raw.f1_label ?? '实际内容')}" required />
               </label>
               <label class="ld-field">
                 <span class="ld-label">类型 *</span>
                 <select class="ld-select" name="f1_type">
-                  <option value="text">短文本 (text)</option>
-                  <option value="textarea">长文本 (textarea)</option>
+                  <option value="text" ${f1Type === 'text' ? 'selected' : ''}>短文本 (text)</option>
+                  <option value="textarea" ${f1Type === 'textarea' ? 'selected' : ''}>长文本 (textarea)</option>
                 </select>
               </label>
             </div>
           </div>
           <div style="padding:12px;border-radius:var(--ld-radius-md);background:var(--ld-bg-elevated);border:1px solid var(--ld-border);" class="ld-form-grid">
             <label style="display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer;">
-              <input type="checkbox" name="include_f2" checked />
+              <input type="checkbox" name="include_f2" ${includeF2 ? 'checked' : ''} />
               <span>同时添加字段 2（可选数值字段，供任务门槛与数值聚合引用）</span>
             </label>
             <div class="ld-form-row">
               <label class="ld-field">
                 <span class="ld-label">字段 key</span>
-                <input class="ld-input" type="text" name="f2_key" value="duration_minutes" pattern="^[a-z][a-z0-9_]{0,63}$" />
+                <input class="ld-input" type="text" name="f2_key" value="${escapeHtml(raw.f2_key ?? 'duration_minutes')}" pattern="^[a-z][a-z0-9_]{0,63}$" />
               </label>
               <label class="ld-field">
                 <span class="ld-label">显示名称 (label)</span>
-                <input class="ld-input" type="text" name="f2_label" value="实际分钟数" />
+                <input class="ld-input" type="text" name="f2_label" value="${escapeHtml(raw.f2_label ?? '实际分钟数')}" />
               </label>
             </div>
             <div class="ld-form-row">
               <label class="ld-field">
                 <span class="ld-label">数值类型</span>
                 <select class="ld-select" name="f2_type">
-                  <option value="integer">整数 (integer)</option>
-                  <option value="decimal">精确小数 (decimal)</option>
+                  <option value="integer" ${f2Type === 'integer' ? 'selected' : ''}>整数 (integer)</option>
+                  <option value="decimal" ${f2Type === 'decimal' ? 'selected' : ''}>精确小数 (decimal)</option>
                 </select>
               </label>
               <label class="ld-field">
                 <span class="ld-label">单位 (unit)</span>
-                <input class="ld-input" type="text" name="f2_unit" value="分钟" />
+                <input class="ld-input" type="text" name="f2_unit" value="${escapeHtml(raw.f2_unit ?? '分钟')}" />
               </label>
             </div>
           </div>
         </div>
         <div class="ld-modal-footer">
           <button type="button" class="ld-btn" data-action="close-modal">取消</button>
-          <button type="submit" class="ld-btn ld-btn-primary" ${state.submittingModal ? 'disabled' : ''}>创建记录模板</button>
+          <button type="submit" class="ld-btn ld-btn-primary" id="ld-config-submit-btn" ${state.submittingModal ? 'disabled' : ''}>
+            ${state.submittingModal ? '等待服务器确认…' : ctx.pendingOp ? '确认上次提交' : '创建记录模板'}
+          </button>
         </div>
       </form>
     </div>`;
