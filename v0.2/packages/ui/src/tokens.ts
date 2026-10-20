@@ -303,3 +303,249 @@ export const AI_BLUEPRINT_SUPPORT_MATRIX: BlueprintSupportMatrixRow[] = [
     boundaryNote: 'AI 不能直接输出 unlocked=true，必须由真实已确认记录触发解锁'
   }
 ];
+
+// ---------------------------------------------------------------------------
+// v0.2 Phase 1: 3D Avatar Renderer Port & Static Fallback (H04)
+// No 3D engine, no model/asset network requests, no arbitrary script execution.
+// ---------------------------------------------------------------------------
+
+export const AVATAR_ACTION_IDS = ['idle', 'greeting', 'celebrate', 'focus'] as const;
+export type AvatarActionId = (typeof AVATAR_ACTION_IDS)[number];
+
+export const AVATAR_ACTION_META: Record<AvatarActionId, { label: string; badge: string }> = {
+  idle: { label: '静息待机 (idle)', badge: '静态占位' },
+  greeting: { label: '问候状态 (greeting)', badge: '静态回退' },
+  celebrate: { label: '达成庆祝 (celebrate)', badge: '静态回退' },
+  focus: { label: '专注状态 (focus)', badge: '静态回退' }
+};
+
+export interface AvatarInputState {
+  character_id: string;
+  model_asset_ref: string | null;
+  action_id?: AvatarActionId | string;
+  animation_state?: AvatarActionId | string;
+  appearance_config?: Record<string, unknown> | null;
+  reduced_motion?: boolean;
+  version?: number;
+}
+
+export interface AvatarEnvironmentConfig {
+  width?: number;
+  height?: number;
+  reduced_motion?: boolean;
+  performance_tier?: 'low' | 'medium' | 'high';
+}
+
+export interface AvatarEventMap {
+  ready: {
+    mode: 'static_fallback';
+    character_id: string;
+    action_id: AvatarActionId;
+    reduced_motion: boolean;
+    asset_loaded: false;
+    network_requests: 0;
+  };
+  error: {
+    code: 'UNSUPPORTED_ACTION' | 'ASSET_DOWNLOAD_DISABLED';
+    message: string;
+    fallback_action: AvatarActionId;
+  };
+  interaction: {
+    character_id: string;
+    action_id: AvatarActionId;
+    target: string;
+  };
+}
+
+export interface AvatarMountContainer {
+  innerHTML?: string;
+  setAttribute?: (name: string, value: string) => void;
+}
+
+export interface AvatarRendererPort {
+  mount(
+    container: AvatarMountContainer | null,
+    state: AvatarInputState,
+    env?: AvatarEnvironmentConfig
+  ): void;
+  update(state: Partial<AvatarInputState>, env?: Partial<AvatarEnvironmentConfig>): void;
+  pause(): void;
+  dispose(): void;
+  on<K extends keyof AvatarEventMap>(
+    event: K,
+    listener: (payload: AvatarEventMap[K]) => void
+  ): () => void;
+  triggerInteraction(target?: string): void;
+  getState(): {
+    mounted: boolean;
+    paused: boolean;
+    disposed: boolean;
+    character_id: string;
+    model_asset_ref: null;
+    action_id: AvatarActionId;
+    reduced_motion: boolean;
+    version: number;
+    network_requests: 0;
+  };
+}
+
+function isAllowedAvatarAction(action: unknown): action is AvatarActionId {
+  return typeof action === 'string' && (AVATAR_ACTION_IDS as readonly string[]).includes(action);
+}
+
+export class StaticAvatarRenderer implements AvatarRendererPort {
+  private container: AvatarMountContainer | null = null;
+  private mounted = false;
+  private paused = false;
+  private disposed = false;
+  private characterId = 'default-avatar';
+  private actionId: AvatarActionId = 'idle';
+  private reducedMotion = false;
+  private version = 1;
+  private listeners: {
+    [K in keyof AvatarEventMap]: Set<(payload: AvatarEventMap[K]) => void>;
+  } = {
+    ready: new Set(),
+    error: new Set(),
+    interaction: new Set()
+  };
+
+  on<K extends keyof AvatarEventMap>(
+    event: K,
+    listener: (payload: AvatarEventMap[K]) => void
+  ): () => void {
+    this.listeners[event].add(listener);
+    return () => {
+      this.listeners[event].delete(listener);
+    };
+  }
+
+  private emit<K extends keyof AvatarEventMap>(event: K, payload: AvatarEventMap[K]): void {
+    for (const fn of this.listeners[event]) {
+      try {
+        fn(payload);
+      } catch {
+        // Listener errors must never crash UI rendering
+      }
+    }
+  }
+
+  private applyState(state: Partial<AvatarInputState>, env?: Partial<AvatarEnvironmentConfig>): void {
+    if (typeof state.character_id === 'string' && state.character_id.trim()) {
+      this.characterId = state.character_id.trim();
+    }
+    if (typeof state.version === 'number' && Number.isInteger(state.version) && state.version > 0) {
+      this.version = state.version;
+    }
+    const rm = env?.reduced_motion ?? state.reduced_motion;
+    if (typeof rm === 'boolean') {
+      this.reducedMotion = rm;
+    }
+
+    // Never download external model assets in v0.2 Phase 1
+    if (state.model_asset_ref !== undefined && state.model_asset_ref !== null) {
+      this.emit('error', {
+        code: 'ASSET_DOWNLOAD_DISABLED',
+        message: 'v0.2 第一阶段不加载或下载 3D 模型资源，已回退静态占位',
+        fallback_action: 'idle'
+      });
+    }
+
+    const rawAction = state.action_id ?? state.animation_state;
+    if (rawAction !== undefined) {
+      if (isAllowedAvatarAction(rawAction)) {
+        this.actionId = this.reducedMotion ? 'idle' : rawAction;
+      } else {
+        this.actionId = 'idle';
+        this.emit('error', {
+          code: 'UNSUPPORTED_ACTION',
+          message: `不支持的动作标识 ${String(rawAction)}，已回退至 idle`,
+          fallback_action: 'idle'
+        });
+      }
+    } else if (this.reducedMotion) {
+      this.actionId = 'idle';
+    }
+  }
+
+  private syncContainerAttributes(): void {
+    if (!this.container?.setAttribute) return;
+    this.container.setAttribute('data-avatar-renderer', 'static');
+    this.container.setAttribute('data-avatar-mounted', String(this.mounted && !this.disposed));
+    this.container.setAttribute('data-avatar-paused', String(this.paused));
+    this.container.setAttribute('data-character-id', this.characterId);
+    this.container.setAttribute('data-action-id', this.actionId);
+    this.container.setAttribute('data-reduced-motion', String(this.reducedMotion));
+    this.container.setAttribute('data-model-asset-ref', 'null');
+  }
+
+  mount(
+    container: AvatarMountContainer | null,
+    state: AvatarInputState,
+    env?: AvatarEnvironmentConfig
+  ): void {
+    this.container = container;
+    this.mounted = true;
+    this.paused = false;
+    this.disposed = false;
+    this.applyState(state, env);
+    this.syncContainerAttributes();
+    this.emit('ready', {
+      mode: 'static_fallback',
+      character_id: this.characterId,
+      action_id: this.actionId,
+      reduced_motion: this.reducedMotion,
+      asset_loaded: false,
+      network_requests: 0
+    });
+  }
+
+  update(state: Partial<AvatarInputState>, env?: Partial<AvatarEnvironmentConfig>): void {
+    if (this.disposed) return;
+    this.applyState(state, env);
+    this.syncContainerAttributes();
+  }
+
+  pause(): void {
+    if (!this.mounted || this.disposed) return;
+    this.paused = true;
+    this.actionId = 'idle';
+    this.syncContainerAttributes();
+  }
+
+  dispose(): void {
+    this.mounted = false;
+    this.paused = true;
+    this.disposed = true;
+    this.syncContainerAttributes();
+    this.container = null;
+  }
+
+  triggerInteraction(target = 'avatar-slot'): void {
+    if (!this.mounted || this.paused || this.disposed) return;
+    this.emit('interaction', {
+      character_id: this.characterId,
+      action_id: this.actionId,
+      target
+    });
+  }
+
+  getState() {
+    return {
+      mounted: this.mounted,
+      paused: this.paused,
+      disposed: this.disposed,
+      character_id: this.characterId,
+      model_asset_ref: null as null,
+      action_id: this.actionId,
+      reduced_motion: this.reducedMotion,
+      version: this.version,
+      network_requests: 0 as const
+    };
+  }
+}
+
+export function createStaticAvatarRenderer(): AvatarRendererPort {
+  return new StaticAvatarRenderer();
+}
+

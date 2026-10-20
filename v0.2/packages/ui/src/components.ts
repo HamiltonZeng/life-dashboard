@@ -122,3 +122,36 @@ export function renderErrorBanner(opts: ErrorBannerOptions): string {
     ${opts.retryAction ? `<button type="button" class="ld-btn ld-btn-sm ld-btn-secondary" data-action="${escapeHtml(opts.retryAction)}">重试</button>` : ''}
   </div>`;
 }
+
+export interface StaticAvatarSlotOptions {
+  characterId?: string;
+  nickname?: string;
+  actionId?: string;
+  reducedMotion?: boolean;
+  modelAssetRef?: string | null;
+}
+
+export function renderStaticAvatarSlot(opts: StaticAvatarSlotOptions = {}): string {
+  const charId = opts.characterId || 'local-character';
+  const actionId = opts.reducedMotion ? 'idle' : opts.actionId || 'idle';
+  return `<div class="ld-card ld-avatar-static-slot" id="ld-home-avatar-slot" data-home-section="avatar" data-avatar-renderer="static" data-character-id="${escapeHtml(charId)}" data-action-id="${escapeHtml(actionId)}" data-reduced-motion="${String(Boolean(opts.reducedMotion))}" data-model-asset-ref="null">
+    <div class="ld-card-top">
+      <div>
+        <h3 class="ld-card-title">个人形象槽位（静态占位）</h3>
+        <p class="ld-panel-subtitle">AvatarRendererPort 已挂载静态回退 · model_asset_ref = null</p>
+      </div>
+      <span class="ld-badge">3D 渲染未开放</span>
+    </div>
+    <div class="ld-avatar-figure" aria-label="个人形象静态占位">
+      <div class="ld-avatar-emblem">${renderIcon('sparkles', 28)}</div>
+      <div class="ld-avatar-caption">
+        <strong>${escapeHtml(opts.nickname || '本地角色')}</strong>
+        <span>动作状态：<code>${escapeHtml(actionId)}</code> · 零外部模型下载</span>
+      </div>
+    </div>
+    <div class="ld-card-meta">
+      <span>3D 模型、动作编辑与代币商城兑换将在后续版本开放；当前不加载外部 3D 引擎或模型资源。</span>
+    </div>
+  </div>`;
+}
+

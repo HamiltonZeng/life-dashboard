@@ -16,9 +16,20 @@ import {
   renderAiResultModal,
   renderSettingsAiSection
 } from './ai-views.js';
+import {
+  buildFallbackHomeFromBootstrap,
+  renderDisabledAiContainer,
+  renderHomePanel,
+  renderProfileStatusBar,
+  renderSettingsProfileSection
+} from './home-profile.js';
 import { renderActiveModal } from './modals.js';
 import type { AppState } from './state.js';
-import { loadAllPendingMutations, loadAllRecordDrafts } from './storage.js';
+import {
+  loadAllPendingConfigMutations,
+  loadAllPendingMutations,
+  loadAllRecordDrafts
+} from './storage.js';
 import type {
   AchievementAwardRow,
   BootstrapData,
@@ -30,11 +41,16 @@ import type {
 } from './types.js';
 
 export {
+  buildFallbackHomeFromBootstrap,
   describeAiProvider,
   renderActiveModal,
   renderAiGenerateModal,
   renderAiResultModal,
-  renderSettingsAiSection
+  renderDisabledAiContainer,
+  renderHomePanel,
+  renderProfileStatusBar,
+  renderSettingsAiSection,
+  renderSettingsProfileSection
 };
 
 export function formatDateTime(iso: string | null | undefined): string {
@@ -250,8 +266,9 @@ export function renderTasksPanel(state: AppState, data: BootstrapData): string {
                   ${t.completed_at ? `<span>· 完成于 ${escapeHtml(formatDateTime(t.completed_at))} (${t.completion_origin === 'manual' ? '手动确认' : '记录达标'})</span>` : ''}
                   ${isClosedTask ? `<span>· 已关闭状态（不可再完成）</span>` : ''}
                 </div>
-                <div style="display:flex;align-items:center;gap:8px;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                   ${primaryButtons}
+                  ${!isClosedTask ? `<button type="button" class="ld-btn ld-btn-sm" data-action="home-toggle-pin-task" data-task-id="${escapeHtml(t.id)}">${(state.homePreferences?.pinned_task_ids ?? []).includes(t.id) ? '取消首页固定' : '📌 固定首页'}</button>` : ''}
                   <button type="button" class="ld-btn ld-btn-sm" data-action="open-task-detail" data-task-id="${escapeHtml(t.id)}">查看详情</button>
                 </div>
               </div>
@@ -463,6 +480,7 @@ export function renderRecordsPanel(state: AppState, data: BootstrapData): string
         </select>
       </div>
     </div>
+    ${renderDisabledAiContainer('records', state)}
     ${bodyHtml}
   </div>`;
 }
@@ -535,7 +553,8 @@ export function renderMetricsPanel(state: AppState, data: BootstrapData): string
                 <button type="button" class="ld-btn ld-btn-sm" data-action="metric-view-sources" data-metric-id="${escapeHtml(m.id)}">
                   查看来源记录 (${m.computed.source_record_ids.length})
                 </button>
-                <div style="display:flex;gap:6px;">
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <button type="button" class="ld-btn ld-btn-sm" data-action="home-toggle-pin-metric" data-metric-id="${escapeHtml(m.id)}">${(state.homePreferences?.pinned_metric_ids ?? []).includes(m.id) ? '取消首页固定' : '📌 固定首页'}</button>
                   <button type="button" class="ld-btn ld-btn-sm ld-btn-primary" data-action="metric-add-record" data-metric-id="${escapeHtml(m.id)}">＋ 记一条</button>
                   <button type="button" class="ld-btn ld-btn-sm" data-action="open-metric-detail" data-metric-id="${escapeHtml(m.id)}">详情</button>
                 </div>
@@ -717,12 +736,15 @@ export function renderAchievementsPanel(state: AppState, data: BootstrapData): s
 
 export function renderSettingsPanel(state: AppState, data: BootstrapData): string {
   const p = state.panels.settings;
-  const aiEnabled=state.capabilities?.ai_generation===true;
-  if(p.subTab==='ai'&&!aiEnabled)p.subTab='modules';
+  const aiEnabled = state.capabilities?.ai_generation === true;
+  if (p.subTab === 'ai' && !aiEnabled) p.subTab = 'modules';
   const subTab = p.subTab || 'modules';
+  const pendingConfigOps = Object.values(loadAllPendingConfigMutations());
 
   let sectionHtml = '';
-  if (subTab === 'modules') {
+  if (subTab === 'profile') {
+    sectionHtml = renderSettingsProfileSection(state, data);
+  } else if (subTab === 'modules') {
     sectionHtml = `<div class="ld-card-list">
       <div class="ld-card" style="flex-direction:row;align-items:center;justify-content:space-between;flex-wrap:wrap;">
         <div>
@@ -850,10 +872,20 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
   } else if (subTab === 'ai') {
     sectionHtml = renderSettingsAiSection(state, data);
   } else if (subTab === 'display') {
+    const isMinimal = Boolean(state.homePreferences?.minimal_mode);
     sectionHtml = `<div class="ld-card-list">
       <div class="ld-card">
-        <h3 class="ld-card-title">显示、主题与反馈偏好</h3>
+        <h3 class="ld-card-title">显示与首页偏好</h3>
         <div class="ld-form-grid" style="margin-top:8px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <div>
+              <strong>主页极简模式 (minimal_mode)</strong>
+              <div class="ld-card-meta">开启后首页主内容区只保留居中的 AI 对话容器，隐藏形象、摘要、数值、趋势、任务和成就卡片；关闭后自动恢复原固定顺序与输入草稿（偏好保存在服务器）</div>
+            </div>
+            <button type="button" class="ld-btn ${isMinimal ? 'ld-btn-primary' : ''}" id="ld-settings-minimal-toggle-btn" data-action="toggle-minimal-mode" data-minimal-mode="${String(isMinimal)}">
+              ${isMinimal ? '已开启极简模式（点击恢复标准首页）' : '已关闭（点击开启极简模式）'}
+            </button>
+          </div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
             <div>
               <strong>界面主题配色</strong>
@@ -1001,9 +1033,21 @@ export function renderSettingsPanel(state: AppState, data: BootstrapData): strin
         <p class="ld-panel-subtitle">管理模块、记录模板、内容依赖、显示偏好与本地账户会话</p>
       </div>
     </header>
+    ${
+      pendingConfigOps.length > 0
+        ? `<div class="ld-draft-status-bar" data-pending-config-ops="${pendingConfigOps.length}">
+            <div>
+              <span class="ld-badge ld-badge-warning">存在待确认的配置提交 (${pendingConfigOps.length})</span>
+              <span style="margin-left:6px;color:var(--ld-text-secondary);">上次配置创建或资料更新未收到服务器回执，点击继续确认将沿用原 operation_id 与实体 ID。</span>
+            </div>
+            <button type="button" class="ld-btn ld-btn-sm ld-btn-primary" data-action="resume-pending-config" data-config-kind="${escapeHtml(pendingConfigOps[0].kind)}">继续确认待定配置</button>
+          </div>`
+        : ''
+    }
     <div class="ld-subfilter-bar">
       <div class="ld-tab-group" role="tablist" aria-label="设置分组">
         ${[
+          { key: 'profile', label: '个人信息详情' },
           { key: 'modules', label: '模块管理' },
           { key: 'dependencies', label: '内容配置与依赖' },
           { key: 'ai', label: 'AI 设置与自动填充' },
