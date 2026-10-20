@@ -46,3 +46,7 @@ a60c9f0、b63e77f 均已是候选祖先，两旧工作树 clean，无需重复�
 冻结 SHA `13bff27950e57aa3253fe62a352cd1fed9395dec`：独立 checkout、独立空PG和新本机密钥、只读既有依赖，本地4镜像离线启动18184。类型/构建/26单元/134渲染断言/8前端单元再过；真实Chromium登录、手动记录、原键重放、刷新仅一条记录、360px和零未捕获错误通过。主机首页/就绪200、未登录401。冷启动测试首次因空状态存在两个同名按钮的严格选择器失败，修为明确 first() 后重跑通过；未改产品。
 
 临时4个release容器、1个空网络和3个Codex测试前端/API网关容器已移除，临时checkout私有运行/PG/密钥完整归档后移除。总计移除16容器、3空网络、3checkout（其中旧工作流9容器/2网络/2checkout），镜像仍0。主与预览业务服务正常，v0.1保留。冻结后最终更改仅记录文档与证据，不改变产品源码；最终分支与远端SHA另回读核对。
+
+## GitHub 首次交付核验
+
+已用 Desktop 正常 Publish branch，再 Fetch 回读：本地/远端首次完整候选均为 `30f74a7aa5e8ed45ba7cc18921e3b981faa75e77`，目标 https://github.com/HamiltonZeng/life-dashboard/tree/codex/v0.2-release 。UI 确认 push complete/fetch complete，upstream 已设 origin 同名分支；origin/main 仍 c91eee95f41cd3238a8619e75e4675bc9231b98e。此记录仅追加文档；最终文档提交再普通推送并回读，最终 HEAD 在交付答复/私有 github-delivery.json，源码仍与13bff27冻结验证一致。没有 PR/main 合并/Release/18080切换。
