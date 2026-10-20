@@ -634,7 +634,7 @@ export function bindDynamicModalControllers(
       const submit = document.querySelector<HTMLButtonElement>(
         '#ld-form-create-achievement button[type=submit]'
       );
-      if (submit) submit.disabled = state.submittingModal || metrics.length === 0;
+      if (submit) submit.disabled = state.submittingModal || metrics.length === 0 || Boolean(loadConfigDraft(buildConfigDraftKey('create-achievement'))?.confirmedEntityId);
     };
     achModSelect.onchange = syncAchievementMetrics;
     syncAchievementMetrics();
