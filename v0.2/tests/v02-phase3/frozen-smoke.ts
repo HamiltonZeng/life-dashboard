@@ -19,7 +19,7 @@ try{
  await p.goto('/');await p.locator('[name=login_secret]').fill(secret);await p.locator('#ld-login-form button[type=submit]').click();await p.locator('#ld-main-region').waitFor();
  const get=async(path:string)=>{const r=await ctx.request.get('/api/v1/'+path);assert.equal(r.status(),200,await r.text());return (await r.json()).data;};
  assert.equal((await get('capabilities')).app_version,'0.2.0-rc.1');assert.equal((await get('records')).length,0);
- await p.goto('/records');await p.locator('[data-action=open-create-record]').click();await p.locator('[data-field-key=topic]').fill('frozen checkout synthetic record');await p.locator('#ld-form-record button[type=submit]').click();await p.locator('#ld-form-record').waitFor({state:'detached'});
+ await p.goto('/records');await p.locator('[data-action=open-create-record]').first().click();await p.locator('[data-field-key=topic]').fill('frozen checkout synthetic record');await p.locator('#ld-form-record button[type=submit]').click();await p.locator('#ld-form-record').waitFor({state:'detached'});await p.waitForLoadState('networkidle');
  const records=await get('records');assert.equal(records.length,1);assert.equal(records[0].values.topic,'frozen checkout synthetic record');assert.ok(command);
  const before=await get('export');const replay=await ctx.request.post('/api/v1/records',{headers:{Origin:origin,'Idempotency-Key':command.key},data:command.body});assert.equal(replay.status(),200,await replay.text());assert.deepEqual((await get('export')).data,before.data);
  await p.reload();await p.locator('#ld-main-region').waitFor();assert.equal((await get('records')).length,1);
