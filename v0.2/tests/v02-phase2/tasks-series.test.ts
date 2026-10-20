@@ -71,3 +71,11 @@ test('C1 1/3/10 distinct-day milestones cross levels and evidence recovery reuse
   assert.equal((await f.req('POST','achievement-series',{...input,id:randomUUID(),milestones:[{id:randomUUID(),threshold:'1.0'},{id:randomUUID(),threshold:'1'}]})).statusCode,422);
  }finally{await f.close();}
 });
+test('C1 combined filters are applied before pagination and numeric filter errors are explicit',async()=>{
+ const f=await fixture();try{
+ const a=await f.template({color:'green'}),b=await f.template({color:'green'});await f.template({category:'weekly',color:'green'});await f.template({color:'blue'});
+ await f.ok('PATCH','home-preferences',{base_version:1,task_pins:[{kind:'template',id:a.template.id},{kind:'instance',id:b.instance.id}]});
+ const r=await f.req('GET',`task-instances?module_id=${DEFAULT_MODULE_IDS[0]}&category=daily&status=pending&color=green&pinned=true&limit=1&offset=1`);assert.equal(r.statusCode,200);assert.equal(r.json().page.total,2);assert.equal(r.json().data.length,1);assert.equal(r.json().data[0].color,'green');
+ const invalid=await f.req('POST','task-templates',{id:randomUUID(),module_id:DEFAULT_MODULE_IDS[0],title:'invalid filter fixture',category:'daily',timezone:'Asia/Shanghai',completion_mode:'record_required',rule:{kind:'count',record_type_id:DEFAULT_TEMPLATE_IDS[0],threshold:'1',filters:[{field_key:'duration_minutes',operator:'gte',value:'not-a-number'}]}});assert.equal(invalid.statusCode,422);
+ }finally{await f.close();}
+});

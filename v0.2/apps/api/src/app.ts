@@ -107,6 +107,7 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
   app.post('/api/v1/task-templates',async req=>service.mutate(req.accountId,idempotency(req),'POST','task-templates',req.body));
   app.patch('/api/v1/task-templates/:id',async req=>service.mutate(req.accountId,idempotency(req),'PATCH',`task-templates/${z.object({id:uuid}).parse(req.params).id}`,req.body));
   app.post('/api/v1/task-instances/materialize',async req=>service.mutate(req.accountId,idempotency(req),'POST','task-instances/materialize',req.body??{}));
+  app.post('/api/v1/tasks/:id/cancel',async req=>service.mutate(req.accountId,idempotency(req),'POST',`tasks/${z.object({id:uuid}).parse(req.params).id}/cancel`,req.body));
   app.post('/api/v1/tasks/:id/revoke',async req=>service.mutate(req.accountId,idempotency(req),'POST',`tasks/${z.object({id:uuid}).parse(req.params).id}/revoke`,req.body));
   app.post('/api/v1/achievement-series',async req=>service.mutate(req.accountId,idempotency(req),'POST','achievement-series',req.body));
   app.get('/api/v1/bootstrap',async req=>({data:await service.snapshot(req.accountId)}));

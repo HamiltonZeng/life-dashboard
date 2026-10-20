@@ -8,6 +8,10 @@ wrapper="$shared_root/scripts/agents/compose.sh"
 artifacts="$workspace/.runtime/test-artifacts/v02-phase2-codex"
 mkdir -p "$artifacts"
 printf '{"status":"RUNNING"}\n' > "$artifacts/run.json"
+# Read-only extraction of the exact previous source; never resets a worktree.
+mkdir -p "$workspace/.runtime/phase1-upgrade"
+git -C "$workspace/.." archive e6ff267 v0.2/packages v0.2/apps/api/src v0.2/package.json | tar -x -C "$workspace/.runtime/phase1-upgrade"
+[ -e "$workspace/.runtime/phase1-upgrade/v0.2/node_modules" ] || ln -s ../../../node_modules "$workspace/.runtime/phase1-upgrade/v0.2/node_modules"
 failed=0
 step(){ name=$1; shift; if "$@" > "$artifacts/$name.log" 2>&1; then printf '%s PASS\n' "$name"; else code=$?; printf '%s FAIL (exit %s; %s/%s.log)\n' "$name" "$code" "$artifacts" "$name"; failed=1; fi; }
 step database sh "$wrapper" codex --profile test up -d --wait --pull never --no-build postgres-test

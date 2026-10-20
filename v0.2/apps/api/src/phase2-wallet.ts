@@ -1,3 +1,4 @@
+import {instanceView} from './phase2-tasks.js';
 import {randomUUID} from 'node:crypto';
 import type {Client} from '../../../packages/db/src/client.js';
 import type {Core} from './phase2-core.js';
@@ -14,11 +15,13 @@ export async function readLedger(c:Client,user:string,raw:unknown){
  const rows=(await c.query('SELECT * FROM wallet_ledger WHERE user_id=$1 AND ($2::uuid IS NULL OR task_id=$2) ORDER BY created_at DESC,qualification_id,ordinal DESC LIMIT $3 OFFSET $4',[...args,q.limit,q.offset])).rows;
  return {data:rows,page:{total,limit:q.limit,offset:q.offset}};
 }
+async function publishReward(core:Core,c:Client,user:string,id:string){const row=(await c.query('UPDATE tasks SET version=version+1,updated_at=$3 WHERE user_id=$1 AND id=$2 RETURNING version',[user,id,core.now()])).rows[0];await core.event(c,user,'task',id,row.version,await instanceView(c,user,id));}
 export async function recomputeRewards(core:Core,c:Client,user:string){
  const rows=(await c.query('SELECT t.id,t.status,t.needs_review,d.* FROM tasks t JOIN task_instance_details d ON d.user_id=t.user_id AND d.task_id=t.id WHERE t.user_id=$1 ORDER BY t.created_at,t.id',[user])).rows;
  for(const t of rows){
   const valid=t.status==='completed'&&!t.needs_review;let q=(await c.query('SELECT * FROM reward_qualifications WHERE user_id=$1 AND task_id=$2',[user,t.id])).rows[0];
-  if(!q&&valid){
+  let qualified=false;
+  if(!q&&valid){qualified=true;
    const account=(await c.query('SELECT timezone FROM reward_accounts WHERE user_id=$1',[user])).rows[0];
    const period=t.quota_period??quotaPeriod(t.category,account.timezone,core.now());
    const count=Number((await c.query('SELECT count(*) FROM reward_qualifications WHERE user_id=$1 AND category=$2 AND quota_period=$3 AND eligible',[user,t.category,period])).rows[0].count);
@@ -26,7 +29,7 @@ export async function recomputeRewards(core:Core,c:Client,user:string){
    q=(await c.query('INSERT INTO reward_qualifications(id,user_id,task_id,category,quota_period,policy_version,amount,eligible,denial_reason,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[randomUUID(),user,t.id,t.category,period,t.reward_policy_version,t.reward_candidate,!expired&&!full,expired?'expired':full?'quota_full':null,core.now()])).rows[0];
    await core.event(c,user,'reward_qualification',q.id,1,q);
   }
-  if(!q?.eligible)continue;
+  if(!q?.eligible){if(qualified)await publishReward(core,c,user,t.id);continue;}
   const last=(await c.query('SELECT * FROM wallet_ledger WHERE user_id=$1 AND qualification_id=$2 ORDER BY ordinal DESC LIMIT 1',[user,q.id])).rows[0];
   const positive=last&&last.kind!=='reversal';if(Boolean(positive)===valid)continue;
   const id=randomUUID(),kind=!last?'grant':valid?'reinstatement':'reversal',amount=valid?String(q.amount):'-'+q.amount;
@@ -35,5 +38,6 @@ export async function recomputeRewards(core:Core,c:Client,user:string){
   await c.query('UPDATE reward_accounts SET version=version+1 WHERE user_id=$1',[user]);
   await core.event(c,user,'wallet_entry',id,entry.ordinal,entry);
   const wallet=await readWallet(c,user);await core.event(c,user,'wallet',user,wallet.version,wallet);
+  await publishReward(core,c,user,t.id);
  }
 }

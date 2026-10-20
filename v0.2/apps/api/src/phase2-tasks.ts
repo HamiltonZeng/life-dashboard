@@ -3,7 +3,7 @@ import {DateTime} from 'luxon';
 import {Decimal} from 'decimal.js';
 import type {Client} from '../../../packages/db/src/client.js';
 import * as schema from '../../../packages/contracts/src/phase2.js';
-import {DomainError,requireThat,type Fact} from '../../../packages/domain/src/index.js';
+import {DomainError,requireThat,validateValues,type Fact} from '../../../packages/domain/src/index.js';
 import {REWARD_POLICY,periodAt,quotaPeriod,ruleProgress} from '../../../packages/domain/src/phase2/rules.js';
 import type {Core} from './phase2-core.js';
 
@@ -16,6 +16,7 @@ export async function validateMeasure(core:Core,c:Client,user:string,module:stri
  if(rule.threshold!==undefined)requireThat(new Decimal(rule.threshold).gt(0),'INVALID_RULE','Threshold must be positive');
  for(const filter of rule.filters??[]){
   const field=type.fields.find((f:any)=>f.key===filter.field_key);requireThat(field,'INVALID_BINDING','Filter references unknown field');
+  if(filter.operator==='eq')validateValues([{...field,required:false}],{[field.key]:filter.value},false);
   if(filter.operator!=='eq'){let valid=false;try{valid=filter.value!==null&&['number','string'].includes(typeof filter.value)&&new Decimal(filter.value).isFinite();}catch{}requireThat(['integer','decimal'].includes(field.type)&&valid,'INVALID_BINDING','Numeric filter required');}
  }
 }
@@ -93,16 +94,16 @@ export async function executeTasks(core:Core,c:Client,user:string,method:string,
   const d=schema.materializeInput.parse(raw);const ids=d.template_ids??(await c.query("SELECT t.id FROM task_templates t JOIN modules m ON m.id=t.module_id AND m.user_id=t.user_id WHERE t.user_id=$1 AND t.phase2 AND t.status='enabled' AND m.status='enabled' ORDER BY t.created_at,t.id LIMIT 50",[user])).rows.map(r=>r.id);
   const results=[];for(const id of ids)results.push(await materializeOne(core,c,user,id));return {instances:results.map(r=>r.instance),reused:results.map(r=>r.reused)};
  }
- if(kind==='tasks'&&id&&method==='POST'&&['complete','revoke'].includes(action)){
+ if(kind==='tasks'&&id&&method==='POST'&&['complete','revoke','cancel'].includes(action)){
   const detail=(await c.query('SELECT * FROM task_instance_details WHERE user_id=$1 AND task_id=$2',[user,id])).rows[0];if(!detail){if(action==='revoke')throw new DomainError('INVALID_TASK_TRANSITION','Only new manual completions can be revoked',409);return undefined;}
-  const data=action==='revoke'?schema.revokeTaskInput.parse(raw):schema.revokeTaskInput.omit({reason:true}).parse(raw),old=await instanceView(c,user,id);await core.module(c,user,old.module_id);
+  const data=action!=='complete'?schema.revokeTaskInput.parse(raw):schema.revokeTaskInput.omit({reason:true}).parse(raw),old=await instanceView(c,user,id);await core.module(c,user,old.module_id);
   if(old.version!==data.base_version)throw new DomainError('VERSION_CONFLICT','Task version changed',409,{current:old});
   requireThat(!['cancelled','skipped'].includes(old.status),'INVALID_TASK_TRANSITION','Closed task cannot be completed',409);
   if(action==='complete'){requireThat(old.definition.completion_mode!=='record_required','RECORD_REQUIRED','Qualifying evidence is required');if(old.status==='completed')return old;}
-  else requireThat(old.status==='completed'&&old.completion_origin==='manual','INVALID_TASK_TRANSITION','Only manual completion can be revoked',409);
-  const status=action==='complete'?'completed':detail.period_end&&detail.period_end<core.now()?'ended':'pending';
+  else if(action==='revoke')requireThat(old.status==='completed'&&old.completion_origin==='manual','INVALID_TASK_TRANSITION','Only manual completion can be revoked',409);
+  const status=action==='cancel'?'cancelled':action==='complete'?'completed':detail.period_end&&detail.period_end<core.now()?'ended':'pending';
   const row=(await c.query("UPDATE tasks SET status=$3,completion_origin=$4,completed_at=$5,needs_review=false,version=version+1,updated_at=$6 WHERE user_id=$1 AND id=$2 RETURNING *",[user,id,status,action==='complete'?'manual':null,action==='complete'?core.now():null,core.now()])).rows[0];
-  await c.query('UPDATE task_instance_details SET manual_revoked=$3 WHERE user_id=$1 AND task_id=$2',[user,id,action==='revoke']);
+  await c.query('UPDATE task_instance_details SET manual_revoked=$3 WHERE user_id=$1 AND task_id=$2',[user,id,action!=='complete']);
   await c.query('INSERT INTO task_history(id,user_id,task_id,version,event,reason,snapshot,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[randomUUID(),user,id,row.version,action,'reason' in data?data.reason:null,JSON.stringify(old),core.now()]);
   await core.event(c,user,'task',id,row.version,row);return instanceView(c,user,id);
  }

@@ -18,7 +18,9 @@ export async function readProfile(c:Client,user:string,core?:Service) {
 }
 export async function readPreferences(c:Client,user:string) {
   const row=(await c.query('SELECT user_id id,version,minimal_mode,pinned_metric_ids,pinned_task_ids,task_pins,pinned_trends FROM home_preferences WHERE user_id=$1',[user])).rows[0];
-  return {...(row??{id:user,version:1,minimal_mode:false,pinned_metric_ids:[],pinned_task_ids:[],task_pins:[],pinned_trends:[]})};
+  const data=row??{id:user,version:1,minimal_mode:false,pinned_metric_ids:[],pinned_task_ids:[],task_pins:[],pinned_trends:[]};
+  if(!data.task_pins.length&&data.pinned_task_ids.length)data.task_pins=data.pinned_task_ids.map((id:string)=>({kind:'instance',id}));
+  return data;
 }
 
 export async function executeConfiguration(service:Service,c:Client,user:string,path:string,raw:unknown) {
@@ -99,5 +101,5 @@ export async function readHome(service:Service,c:Client,user:string) {
   const warnings=[...preferences.pinned_metric_ids.filter((id:string)=>!availableMetrics.some(r=>r.id===id)).map((id:string)=>({kind:'metric',id,code:'PIN_UNAVAILABLE'})),...preferences.pinned_task_ids.filter((id:string)=>!availableTasks.some(r=>r.id===id)).map((id:string)=>({kind:'task',id,code:'PIN_UNAVAILABLE'}))];
   const trends=[];for(const pin of preferences.pinned_trends??[]){if(availableMetrics.some(m=>m.id===pin.metric_id))trends.push({pin,result:await readTrend(service,c,user,pin.metric_id,pinToQuery(pin))});else warnings.push({kind:'metric',id:pin.metric_id,code:'PIN_UNAVAILABLE'});}
   for(const pin of preferences.task_pins??[])if(pin.kind==='instance'?!availableTasks.some(t=>t.id===pin.id):!(await c.query("SELECT t.id FROM task_templates t JOIN modules m ON m.user_id=t.user_id AND m.id=t.module_id WHERE t.user_id=$1 AND t.id=$2 AND t.status='enabled' AND m.status='enabled'",[user,pin.id])).rows.length)warnings.push({kind:'task',id:pin.id,code:'PIN_UNAVAILABLE'});
-  return {cursor:(await c.query('SELECT seq FROM user_sync_clock WHERE user_id=$1',[user])).rows[0].seq,profile,preferences,metrics,tasks,recent_achievements,warnings,trends,achievement_summary:await achievementSummary(c,user),wallet:await readWallet(c,user),avatar:{enabled:false,model_asset_ref:null}};
+  return {cursor:(await c.query('SELECT seq FROM user_sync_clock WHERE user_id=$1',[user])).rows[0].seq,profile,preferences,metrics,tasks,recent_achievements,warnings:[...new Map(warnings.map(w=>[w.kind+':'+w.id,w])).values()],trends,achievement_summary:await achievementSummary(c,user),wallet:await readWallet(c,user),avatar:{enabled:false,model_asset_ref:null}};
 }

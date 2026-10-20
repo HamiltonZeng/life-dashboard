@@ -235,7 +235,7 @@ export async function restoreUserData(pool: pg.Pool, raw: unknown): Promise<Rest
       for (const row of backup.data[spec.name]) {
         const values = spec.columns.map(col => {
           const value = row[col];
-          return (spec.json as readonly string[]).includes(col) && value !== null && value !== undefined ? JSON.stringify(value) : value;
+          return (spec.json as readonly string[]).includes(col) && (value !== null || (spec.name==='profile_fields' && col==='value')) && value !== undefined ? JSON.stringify(value) : value;
         });
         const placeholders = spec.columns.map((_, i) => `$${i + 1}`).join(',');
         await c.query(`INSERT INTO ${spec.name}(${spec.columns.join(',')}) VALUES(${placeholders})`, values);

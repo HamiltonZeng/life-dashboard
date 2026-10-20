@@ -59,3 +59,51 @@ test('late qualification is permanently denied, profile timezone cannot reset ca
  assert.deepEqual((await exportUserData(f.pool,LOCAL_USER_ID)).data,before.data);
  }finally{await f.close();}
 });
+test('each category cap is independent, cancellation is terminal and late evidence retains original bucket',async()=>{
+ const f=await fixture();try{
+ for(const [category,limit,amount] of [['main',1,100],['weekly',3,50],['monthly',2,200]] as const){
+  for(let i=0;i<limit+1;i++){const t=await f.template({category});await f.ok('POST',`tasks/${t.instance.id}/complete`,{base_version:t.instance.version});}
+  assert.equal((await f.pool.query('SELECT count(*) FROM reward_qualifications WHERE category=$1 AND eligible',[category])).rows[0].count,String(limit));
+ }
+ assert.equal((await f.ok('GET','wallet')).balance,'650');
+ const t=await f.template();const complete=await f.ok('POST',`tasks/${t.instance.id}/complete`,{base_version:t.instance.version});
+ await f.ok('POST',`tasks/${t.instance.id}/cancel`,{base_version:complete.version,reason:'synthetic cancel'});
+ assert.equal((await f.req('POST',`tasks/${t.instance.id}/complete`,{base_version:complete.version+1})).statusCode,409);
+ await f.record('2026-10-20T09:00:00Z');assert.equal((await f.ok('GET','tasks/'+t.instance.id)).status,'cancelled');assert.equal((await f.ok('GET','wallet')).balance,'650');
+ const late=await f.template({completion_mode:'record_required',rule:{kind:'count',record_type_id,threshold:'1'}});
+ f.setNow('2026-10-27T16:00:00Z'); // deadline Shanghai day-end +7 days, inclusive
+ await f.record('2026-10-20T11:00:00Z');
+ const q=(await f.pool.query('SELECT * FROM reward_qualifications WHERE task_id=$1',[late.instance.id])).rows[0];assert.equal(q.eligible,true);assert.equal(q.quota_period,'2026-10-20');
+ }finally{await f.close();}
+});
+test('typed home pins, panel/home trend identity and observations share a read-only snapshot',async()=>{
+ const f=await fixture();try{
+ const metric=await f.ok('POST','metrics',{id:randomUUID(),module_id,record_type_id,name:'count',unit:'次',aggregation:'count',field_key:null,window:'all_time',timezone:'Asia/Shanghai'}),t=await f.template();
+ const pin={metric_id:metric.id,range:'last_7_days',grain:'1d'};
+ await f.ok('PATCH','home-preferences',{base_version:1,task_pins:[{kind:'template',id:t.template.id}],pinned_trends:[pin]});await f.record('2026-10-20T09:00:00Z');
+ const h=await f.ok('GET','home');assert.equal(h.tasks[0].id,t.instance.id);assert.deepEqual(h.trends[0].result,await f.ok('GET',`metrics/${metric.id}/trend`));
+ await f.ok('PATCH','home-preferences',{base_version:2,task_pins:[]});assert.deepEqual((await f.ok('GET','home-preferences')).pinned_task_ids,[]);
+ }finally{await f.close();}
+});
+test('full graph backup preserves bindings, milestone awards, recurring snapshots, ledger and command receipts',async()=>{
+ const f=await fixture();try{
+ const metric=await f.ok('POST','metrics',{id:randomUUID(),module_id,record_type_id,name:'count',unit:'次',aggregation:'count',field_key:null,window:'all_time',timezone:'Asia/Shanghai'});
+ const field={id:randomUUID(),module_id,key:'minutes',label:'来源',kind:'observation',type:'integer',value:null,unit:'分钟',options:[],binding:{record_type_id,field_key:'duration_minutes'}};
+ await f.ok('PATCH','profile',{base_version:1,field_upserts:[field]});
+ await f.ok('POST','achievement-series',{id:randomUUID(),module_id,name:'fixture milestones',record_type_id,aggregation:'distinct_days',unit:'天',timezone:'Asia/Shanghai',milestones:[{id:randomUUID(),threshold:'1'},{id:randomUUID(),threshold:'3'}]});
+ const task=await f.template({completion_mode:'record_required',rule:{kind:'count',record_type_id,threshold:'1'}});
+ await f.ok('PATCH','home-preferences',{base_version:1,task_pins:[{kind:'template',id:task.template.id}],pinned_trends:[{metric_id:metric.id,range:'last_7_days',grain:'1d'}]});
+ const body={id:randomUUID(),field_id:field.id,occurred_at:'2026-10-20T09:00:00Z',timezone:'Asia/Shanghai',value:30,context_values:{topic:'synthetic full graph'}},key=randomUUID();await f.ok('POST','profile/observations',body,key);
+ const before=await exportUserData(f.pool,LOCAL_USER_ID);for(const table of ['profile_fields','series_awards','wallet_ledger','reward_qualifications','task_instance_details'])assert.ok(before.counts[table]>0,table);
+ await f.pool.query('TRUNCATE users CASCADE');await restoreUserData(f.pool,before);
+ const login=await f.app.inject({method:'POST',url:'/api/v1/session',headers:{origin:'http://codex.test'},payload:{login_secret:process.env.LOCAL_LOGIN_SECRET}}),cookie=String(login.headers['set-cookie']).split(';')[0];
+ assert.equal((await f.req('POST','profile/observations',body,key,{cookie})).statusCode,200);assert.deepEqual((await exportUserData(f.pool,LOCAL_USER_ID)).data,before.data);
+ const {Service}=await import('../../apps/api/src/service.js');const reopened=new Service(f.pool,f.now);const home=await reopened.configuration(LOCAL_USER_ID,'home');assert.equal(home.wallet.balance,'10');assert.equal(home.achievement_summary.effective_awards_count,1);assert.equal(home.profile.module_fields[0].source_ref.record_id,body.id);
+ }finally{await f.close();}
+});
+test('legacy persisted pins survive unrelated preference edits after migration',async()=>{
+ const f=await fixture();try{
+ const t=await f.template();await f.pool.query('INSERT INTO home_preferences(user_id,pinned_task_ids) VALUES($1,$2)',[LOCAL_USER_ID,JSON.stringify([t.instance.id])]);
+ await f.ok('PATCH','home-preferences',{base_version:1,minimal_mode:true});const p=await f.ok('GET','home-preferences');assert.deepEqual(p.pinned_task_ids,[t.instance.id]);assert.deepEqual(p.task_pins,[{kind:'instance',id:t.instance.id}]);
+ }finally{await f.close();}
+});
