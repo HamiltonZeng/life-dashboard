@@ -22,11 +22,11 @@ test('v0.2 profile and home isolated acceptance',async t=>{
   try {
     await t.test('read defaults without creating facts or config rows',async()=>{
       const home=await ok('GET','home');assert.equal(home.profile.id,LOCAL_USER_ID);assert.equal(home.profile.version,1);assert.equal(home.profile.static_avatar_ref,null);
-      assert.deepEqual(home.metrics,[]);assert.deepEqual(home.tasks,[]);assert.deepEqual(home.recent_achievements,[]);assert.equal(home.wallet,null);assert.deepEqual(home.avatar,{enabled:false,model_asset_ref:null});
+      assert.deepEqual(home.metrics,[]);assert.deepEqual(home.tasks,[]);assert.deepEqual(home.recent_achievements,[]);assert.equal(home.wallet.balance,'0');assert.deepEqual(home.avatar,{enabled:false,model_asset_ref:null});
       assert.equal((await pool.query('SELECT count(*)::int n FROM user_profiles')).rows[0].n,0);
       assert.equal((await pool.query('SELECT count(*)::int n FROM home_preferences')).rows[0].n,0);
       const caps=await ok('GET','capabilities');for(const key of ['home','profile_fields','home_preferences'])assert.equal(caps[key],true);
-      for(const key of ['ai_chat','ai_recording','ai_profile_update','ai_reward_pricing','avatar_renderer','avatar_redemption','recurring_tasks'])assert.equal(caps[key],false);
+      for(const key of ['ai_chat','ai_recording','ai_profile_update','ai_reward_pricing','avatar_renderer','avatar_redemption'])assert.equal(caps[key],false);
       for(const path of ['ai/chat','ai/recording','ai/profile-update','ai/reward-pricing','avatar/redeem','wallet'])assert.equal((await req('POST',path,{})).json().error.code,'FEATURE_DISABLED');
     });
     await t.test('atomic profile, legal business names, replay and stale versions',async()=>{
@@ -65,7 +65,7 @@ test('v0.2 profile and home isolated acceptance',async t=>{
       assert.equal((await req('PATCH','home-preferences',{base_version:1,minimal_mode:false})).statusCode,409);
       assert.equal((await req('PATCH','home-preferences',{base_version:prefVersion,pinned_metric_ids:[metricIds[0],metricIds[0]]})).statusCode,400);
       assert.equal((await req('PATCH','home-preferences',{base_version:prefVersion,pinned_task_ids:Array.from({length:6},()=>randomUUID())})).statusCode,422);
-      assert.equal((await req('PATCH','home-preferences',{base_version:prefVersion,pinned_trends:[]})).statusCode,400);
+      assert.equal((await req('PATCH','home-preferences',{base_version:prefVersion,pinned_trends:[{metric_id:metricIds[0],range:'month',grain:'21d'}]})).statusCode,422);
       assert.equal((await req('PATCH','home-preferences',{base_version:prefVersion,pinned_metric_ids:[randomUUID()]})).statusCode,422);
       await ok('POST','records',{id:randomUUID(),module_id:DEFAULT_MODULE_IDS[0],record_type_id:DEFAULT_TEMPLATE_IDS[0],schema_version:1,occurred_at:new Date().toISOString(),timezone:'Asia/Shanghai',status:'confirmed',values:{topic:'synthetic'},task_ids:[]});
       home=await ok('GET','home');assert.equal(home.metrics[0].computed.value,'1');assert.equal(home.metrics[0].computed.source_record_ids.length,1);

@@ -29,8 +29,8 @@ export const BACKUP_TABLES = [
     json: ['fields'], where: 'user_id=$1', order: 'id', countWhere: 'user_id=$1'
   },
   {
-    name: 'task_templates', columns: ['id', 'user_id', 'module_id', 'definition', 'version', 'created_at'],
-    json: ['definition'], where: 'user_id=$1', order: 'id', countWhere: 'user_id=$1'
+    name: 'task_templates', columns: ['id', 'user_id', 'module_id', 'definition', 'version', 'created_at','phase2','status','next_definition','effective_at','schedule_timezone','generation_cursor'],
+    json: ['definition','next_definition'], where: 'user_id=$1', order: 'id', countWhere: 'user_id=$1'
   },
   {
     name: 'tasks',
@@ -64,9 +64,17 @@ export const BACKUP_TABLES = [
     json: ['evidence', 'original_evidence'], where: 'user_id=$1', order: 'unlocked_at,id', countWhere: 'user_id=$1'
   },
   {name:'user_profiles',columns:['user_id', 'version', 'bio', 'updated_at'],json:[],where:'user_id=$1',order:'user_id',countWhere:'user_id=$1'},
-  {name:'profile_fields',columns:['id', 'user_id', 'module_id', 'key', 'label', 'type', 'kind', 'value', 'unit', 'options'],json:['value', 'options'],where:'user_id=$1',order:'id',countWhere:'user_id=$1'},
-  {name:'home_preferences',columns:['user_id', 'version', 'minimal_mode', 'pinned_metric_ids', 'pinned_task_ids', 'updated_at'],json:['pinned_metric_ids', 'pinned_task_ids'],where:'user_id=$1',order:'user_id',countWhere:'user_id=$1'},
+  {name:'profile_fields',columns:['id', 'user_id', 'module_id', 'key', 'label', 'type', 'kind', 'value', 'unit', 'options','binding'],json:['value', 'options','binding'],where:'user_id=$1',order:'id',countWhere:'user_id=$1'},
+  {name:'home_preferences',columns:['user_id', 'version', 'minimal_mode', 'pinned_metric_ids', 'pinned_task_ids', 'updated_at','task_pins','pinned_trends'],json:['pinned_metric_ids', 'pinned_task_ids','task_pins','pinned_trends'],where:'user_id=$1',order:'user_id',countWhere:'user_id=$1'},
   {name:'configuration_revisions',columns:['user_id', 'entity_type', 'version', 'snapshot', 'saved_at'],json:['snapshot'],where:'user_id=$1',order:'entity_type,version',countWhere:'user_id=$1'},
+  {name:'reward_accounts',columns:['user_id', 'timezone', 'version', 'created_at'],json:[],where:'user_id=$1',order:'user_id',countWhere:'user_id=$1'},
+  {name:'task_instance_details',columns:['user_id', 'task_id', 'template_id', 'template_version', 'category', 'period_key', 'period_start', 'period_end', 'snapshot', 'progress', 'reward_policy_version', 'reward_candidate', 'quota_period', 'reward_deadline', 'manual_revoked'],json:['snapshot', 'progress'],where:'user_id=$1',order:'task_id',countWhere:'user_id=$1'},
+  {name:'task_history',columns:['id', 'user_id', 'task_id', 'version', 'event', 'reason', 'snapshot', 'created_at'],json:['snapshot'],where:'user_id=$1',order:'task_id,version',countWhere:'user_id=$1'},
+  {name:'achievement_series',columns:['id', 'user_id', 'module_id', 'record_type_id', 'definition', 'version', 'created_at'],json:['definition'],where:'user_id=$1',order:'id',countWhere:'user_id=$1'},
+  {name:'series_milestones',columns:['id', 'user_id', 'series_id', 'threshold', 'label'],json:[],where:'user_id=$1',order:'series_id,threshold,id',countWhere:'user_id=$1'},
+  {name:'series_awards',columns:['id', 'user_id', 'series_id', 'milestone_id', 'period_key', 'state', 'version', 'unlocked_at', 'evaluated_at', 'evidence', 'original_evidence'],json:['evidence', 'original_evidence'],where:'user_id=$1',order:'id',countWhere:'user_id=$1'},
+  {name:'reward_qualifications',columns:['id', 'user_id', 'task_id', 'category', 'quota_period', 'policy_version', 'amount', 'eligible', 'denial_reason', 'original_grant_id', 'created_at'],json:[],where:'user_id=$1',order:'id',countWhere:'user_id=$1'},
+  {name:'wallet_ledger',columns:['id', 'user_id', 'task_id', 'qualification_id', 'ordinal', 'kind', 'amount', 'policy_version', 'root_entry_id', 'previous_entry_id', 'reason', 'created_at'],json:[],where:'user_id=$1',order:'qualification_id,ordinal',countWhere:'user_id=$1'},
   {
     name: 'change_log', columns: ['user_id', 'seq', 'entity_type', 'entity_id', 'version', 'payload', 'created_at'],
     json: ['payload'], where: 'user_id=$1', order: 'seq', countWhere: 'user_id=$1'

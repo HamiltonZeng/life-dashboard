@@ -16,7 +16,7 @@ test('MVP profile rejects AI before provider setup and keeps manual data usable'
     await pool.query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')",[createHash('sha256').update(token).digest('hex'),LOCAL_USER_ID]);
     const req=(method:string,path:string,payload?:any)=>app.inject({method:method as any,url:'/api/v1/'+path,headers:{cookie,origin:'http://localhost:18080','idempotency-key':randomUUID()},payload});
     const caps=(await req('GET','capabilities')).json().data;
-    assert.equal(caps.profile,'mvp');for(const key of ['ai_generation','ai_preview','cloud_ai','sync','recurring_tasks','professional_ledger'])assert.equal(caps[key],false);
+    assert.equal(caps.profile,'mvp');for(const key of ['ai_generation','ai_preview','cloud_ai','sync','professional_ledger'])assert.equal(caps[key],false);
     assert.equal((await req('GET','ai/config')).json().data.enabled,false);
     const id=randomUUID();
     for(const path of ['ai/generations',`ai/generations/${id}/apply`,`ai/generations/${id}/retry`,`ai/generations/${id}/cancel`,`ai/batches/${id}/revoke`]) {

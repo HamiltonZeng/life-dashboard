@@ -70,7 +70,7 @@ test('T2/T3 AI generation acceptance (PostgreSQL)', async t => {
       assert.equal(capabilities.ai_provider, 'mock');
       assert.equal(capabilities.ai_schema_version, '1.0');
       assert.equal(capabilities.cloud_ai, false);
-      assert.equal(capabilities.recurring_tasks, false);
+      assert.equal(capabilities.recurring_tasks, true);
     });
 
     await t.test('preview keeps a candidate without writing configuration (P12/P13 boundary)', async () => {

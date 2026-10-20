@@ -1,8 +1,11 @@
+import {readWallet,readLedger} from './phase2-wallet.js';
 import Fastify from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z, ZodError } from 'zod';
 import type pg from 'pg';
+import {readTrend} from './phase2-trends.js';
+import {readTaskTemplates,readTaskInstances,readSeries,achievementSummary} from './phase2-read.js';
 import { Service } from './service.js';
 import { DomainError, requireThat } from '../../../packages/domain/src/index.js';
 import { CONTRACT_VERSION, aiApplyInput, aiEmptyInput, aiGenerationInput, pageQuery, uuid } from '../../../packages/contracts/src/index.js';
@@ -14,13 +17,13 @@ import { loadAiConfig, type AiConfig } from '../../../packages/ai/src/config.js'
 import {loadAppProfile,type AppProfile} from './profile.js';
 
 const hash = (s:string)=>createHash('sha256').update(s).digest('hex');
-export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecret?:string; origin?:string; profile?:AppProfile; ai?:AiService; aiConfig?:AiConfig; aiAdapter?:ModelAdapter}={}) {
+export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecret?:string; origin?:string; profile?:AppProfile; ai?:AiService; aiConfig?:AiConfig; aiAdapter?:ModelAdapter; now?:()=>Date}={}) {
   const profile=loadAppProfile(options.profile??process.env.APP_PROFILE);
   const secret=options.loginSecret??process.env.LOCAL_LOGIN_SECRET;
   if(!secret || secret.length<32) throw new Error('LOCAL_LOGIN_SECRET must contain at least 32 characters');
   const origin=options.origin??process.env.APP_ORIGIN??'http://localhost:18080';
   const secure=new URL(origin).protocol==='https:';
-  const service=new Service(pool);
+  const service=new Service(pool,options.now);
   // Disabled MVP AI must not even parse stale provider configuration or construct an adapter.
   const createAi=()=>{
     const aiConfig=options.aiConfig??loadAiConfig();
@@ -33,7 +36,7 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
     });
   };
   const ai=profile==='development'?createAi():null;
-  const disabledAi={profile:'mvp',enabled:false,provider:'disabled',cloud_ai:false,configured:false,model:'',schema_version:'1.0',supported_content_types:[],notes:['v0.2 第一阶段不提供 AI 功能。']};
+  const disabledAi={profile:'mvp',enabled:false,provider:'disabled',cloud_ai:false,configured:false,model:'',schema_version:'1.0',supported_content_types:[],notes:['v0.2 不提供 AI 功能。']};
   const app=Fastify({logger:options.logger??false,bodyLimit:128*1024,requestTimeout:15000});
   await app.register(rateLimit,{global:false});
   app.decorateRequest('accountId','');
@@ -57,7 +60,8 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
     requireThat(row,'UNAUTHENTICATED','Session expired or revoked',401);
     req.accountId=row.user_id;
     const path=req.url.split('?')[0];
-    if(/^\/api\/v1\/(ai\/(chat|recording|profile-update|reward-pricing)|avatar\/(render|redeem)|wallet)(\/|$)/.test(path)) throw new DomainError('FEATURE_DISABLED','This capability is not available',409);
+    if(/^\/api\/v1\/(ai\/(chat|recording|profile-update|reward-pricing)|avatar\/(render|redeem))(\/|$)/.test(path)) throw new DomainError('FEATURE_DISABLED','This capability is not available',409);
+    if(path.startsWith('/api/v1/wallet')&&req.method!=='GET')throw new DomainError('FEATURE_DISABLED','Wallet writes are internal only',409);
     if(profile==='mvp' && path.startsWith('/api/v1/ai/') && !(req.method==='GET'&&path==='/api/v1/ai/config')) {
       throw new DomainError('FEATURE_DISABLED','AI is disabled in the MVP profile',409);
     }
@@ -82,16 +86,29 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
   });
   app.get('/api/v1/me',async req=>({data:(await pool.query('SELECT id,name,timezone FROM users WHERE id=$1',[req.accountId])).rows[0]}));
   app.get('/api/v1/capabilities',async()=>({data:{
-    contract_version:CONTRACT_VERSION,profile,stage:profile==='mvp'?'v0.2-phase1':'T2/T3-ai',sync:false,
+    contract_version:CONTRACT_VERSION,profile,stage:profile==='mvp'?'v0.2-phase2':'T2/T3-ai',sync:false,
     cloud_ai:ai?.configSummary().cloud_ai??false,ai_generation:ai!==null,ai_provider:ai?.configSummary().provider??'disabled',
     ai_schema_version:'1.0',ai_preview:ai!==null,
     home:true,home_preferences:true,profile_fields:true,ai_chat:false,ai_recording:false,ai_profile_update:false,ai_reward_pricing:false,avatar_renderer:false,avatar_redemption:false,
-    recurring_tasks:false,professional_ledger:false,local_session:true,user_export:true,user_restore:'cli',
+    recurring_tasks:true,trends:true,achievement_milestones:true,token_wallet:true,profile_observations:true,ai_task_generation:false,ai_metric_analysis:false,ai_achievement_generation:false,professional_ledger:false,local_session:true,user_export:true,user_restore:'cli',
     aggregations:['count','sum','avg','latest'],windows:['day','week','month','all_time']
   }}));
   const idempotency=(req:any)=>uuid.parse(req.headers['idempotency-key']);
   for(const route of ['profile','home-preferences','home']) app.get(`/api/v1/${route}`,async req=>({data:await service.configuration(req.accountId,route)}));
   for(const route of ['profile','home-preferences']) app.patch(`/api/v1/${route}`,async req=>service.mutate(req.accountId,idempotency(req),'PATCH',route,req.body));
+  app.get('/api/v1/metrics/:id/trend',async req=>({data:await service.read(c=>readTrend(service,c,req.accountId,z.object({id:uuid}).parse(req.params).id,req.query))}));
+  app.get('/api/v1/wallet',async req=>({data:await service.read(c=>readWallet(c,req.accountId))}));
+  app.get('/api/v1/wallet/ledger',async req=>service.read(c=>readLedger(c,req.accountId,req.query)));
+  app.get('/api/v1/task-templates',async req=>({data:await service.read(c=>readTaskTemplates(c,req.accountId))}));
+  app.get('/api/v1/task-instances',async req=>service.read(c=>readTaskInstances(c,req.accountId,req.query)));
+  app.get('/api/v1/achievement-series',async req=>service.read(c=>readSeries(service,c,req.accountId,req.query)));
+  app.get('/api/v1/achievement-summary',async req=>({data:await service.read(c=>achievementSummary(c,req.accountId))}));
+  app.post('/api/v1/profile/observations',async req=>service.mutate(req.accountId,idempotency(req),'POST','profile/observations',req.body));
+  app.post('/api/v1/task-templates',async req=>service.mutate(req.accountId,idempotency(req),'POST','task-templates',req.body));
+  app.patch('/api/v1/task-templates/:id',async req=>service.mutate(req.accountId,idempotency(req),'PATCH',`task-templates/${z.object({id:uuid}).parse(req.params).id}`,req.body));
+  app.post('/api/v1/task-instances/materialize',async req=>service.mutate(req.accountId,idempotency(req),'POST','task-instances/materialize',req.body??{}));
+  app.post('/api/v1/tasks/:id/revoke',async req=>service.mutate(req.accountId,idempotency(req),'POST',`tasks/${z.object({id:uuid}).parse(req.params).id}/revoke`,req.body));
+  app.post('/api/v1/achievement-series',async req=>service.mutate(req.accountId,idempotency(req),'POST','achievement-series',req.body));
   app.get('/api/v1/bootstrap',async req=>({data:await service.snapshot(req.accountId)}));
   app.get('/api/v1/export',async req=>({data:await exportUserData(pool,req.accountId)}));
   app.get('/api/v1/ai/config',async()=>({data:ai?.configView()??disabledAi}));

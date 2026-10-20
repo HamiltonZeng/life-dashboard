@@ -24,7 +24,7 @@ export const taskInput = z.strictObject({
 export const metricInput = z.strictObject({
   id: uuid, module_id: uuid, record_type_id: uuid, name: z.string().min(1).max(80), unit: z.string().min(1).max(30),
   aggregation: z.enum(['count','sum','avg','latest']), field_key: z.string().nullable(),
-  window: z.enum(['day','week','month','all_time']), timezone
+  window: z.enum(['day','week','month','all_time']), timezone, display_precision:z.int().min(0).max(6).optional()
 });
 export const achievementInput = z.strictObject({
   id: uuid, module_id: uuid, metric_id: uuid, name: z.string().min(1).max(80),

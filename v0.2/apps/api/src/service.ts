@@ -1,3 +1,5 @@
+import {recomputeRewards} from './phase2-wallet.js';
+import {executeObservation} from './phase2-profile.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { DateTime } from 'luxon';
@@ -6,6 +8,8 @@ import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { createDb, type Client } from '../../../packages/db/src/client.js';
 import { activeMetrics } from '../../../packages/db/src/references.js';
+import {executeTasks,recomputeTasks,instanceView} from './phase2-tasks.js';
+import {createSeries,recomputeSeries} from './phase2-achievements.js';
 import { readProfile, readPreferences, executeConfiguration, readHome } from './user-home.js';
 import * as contract from '../../../packages/contracts/src/index.js';
 import { calculateMetric, DomainError, requireThat, taskProgress, validateFields, validateValues, assertTaskCompletion, canRecomputeTask, type Fact } from '../../../packages/domain/src/index.js';
@@ -17,7 +21,7 @@ function canonical(v: unknown): string {
 }
 const json = JSON.stringify;
 export class Service {
-  constructor(readonly pool: pg.Pool) {}
+  constructor(readonly pool: pg.Pool,readonly now:()=>Date=()=>new Date()) {}
   async ready() { await createDb(this.pool).execute(sql`select 1`); }
   async module(c: Client, user: string, id: string, active = true) {
     const row = (await c.query('SELECT * FROM modules WHERE user_id=$1 AND id=$2',[user,id])).rows[0];
@@ -46,9 +50,15 @@ export class Service {
         requireThat(receipt.request_hash === digest, 'IDEMPOTENCY_MISMATCH', 'Operation ID was already used for another command',409);
         await c.query('COMMIT'); return receipt.response;
       }
+      const before=(await c.query('SELECT seq FROM user_sync_clock WHERE user_id=$1',[user])).rows[0].seq;
       const result = await this.execute(c,user,method,path,body);
       if(!['profile','home-preferences'].includes(path)) await this.recompute(c,user);
-      const response = {data: result, operation_id: operation};
+      let data=result as any;
+      if(data?.instance?.id)data={...data,instance:await instanceView(c,user,data.instance.id)};
+      if(path==='task-instances/materialize'&&data?.instances)data={...data,instances:await Promise.all(data.instances.map((t:any)=>instanceView(c,user,t.id)))};
+      if(path.startsWith('tasks/')&&data?.id)data=await instanceView(c,user,data.id);
+      if(path==='profile/observations')data={...data,profile:await readProfile(c,user,this),impact:{cursor:(await c.query('SELECT seq FROM user_sync_clock WHERE user_id=$1',[user])).rows[0].seq,changes:(await c.query('SELECT * FROM change_log WHERE user_id=$1 AND seq>$2 ORDER BY seq',[user,before])).rows}};
+      const response = {data, operation_id: operation};
       await c.query('INSERT INTO mutation_receipts(user_id,operation_id,request_hash,response) VALUES($1,$2,$3,$4)',[user,operation,digest,json(response)]);
       await c.query('COMMIT'); return response;
     } catch(e) {
@@ -58,6 +68,9 @@ export class Service {
     } finally {c.release();}
   }
   async execute(c: Client, user: string, method: string, path: string, raw: unknown): Promise<unknown> {
+    if(path==='profile/observations'&&method==='POST')return executeObservation(this,c,user,raw);
+    const phase2=await executeTasks(this,c,user,method,path,raw);if(phase2!==undefined)return phase2;
+    if(path==='achievement-series'&&method==='POST')return createSeries(this,c,user,raw);
     if(method==='PATCH' && ['profile','home-preferences'].includes(path)) return executeConfiguration(this,c,user,path,raw);
     const [kind,id,action] = path.split('/');
     if (id) contract.uuid.parse(id);
@@ -157,12 +170,12 @@ export class Service {
     throw new DomainError('NOT_IMPLEMENTED','Command is outside the T0/T1 contract',404);
   }
   async facts(c: Client, user: string): Promise<Fact[]> {
-    const {rows}=await c.query("SELECT id,record_type_id,occurred_at,values,ARRAY(SELECT task_id FROM record_tasks l WHERE l.user_id=r.user_id AND l.record_id=r.id) task_ids FROM records r WHERE user_id=$1 AND status='confirmed' AND deleted_at IS NULL",[user]);
+    const {rows}=await c.query("SELECT id,module_id,version,record_type_id,occurred_at,values,ARRAY(SELECT task_id FROM record_tasks l WHERE l.user_id=r.user_id AND l.record_id=r.id) task_ids FROM records r WHERE user_id=$1 AND status='confirmed' AND deleted_at IS NULL",[user]);
     return rows.map(r=>({...r,occurred_at:r.occurred_at.toISOString()}));
   }
   async recompute(c: Client,user: string) {
     const facts=await this.facts(c,user);
-    for(const t of (await c.query('SELECT * FROM tasks WHERE user_id=$1',[user])).rows) {
+    for(const t of (await c.query('SELECT * FROM tasks WHERE user_id=$1 AND NOT EXISTS(SELECT 1 FROM task_instance_details d WHERE d.user_id=tasks.user_id AND d.task_id=tasks.id)',[user])).rows) {
       if(t.definition.completion_mode==='manual' || t.completion_origin==='manual' || !canRecomputeTask(t.status)) continue;
       const p=taskProgress(t.definition,facts);
       const review=p.satisfied ? false : t.needs_review || t.status==='completed';
@@ -212,12 +225,19 @@ export class Service {
         }
       }
     }
+    await recomputeTasks(this,c,user,facts);
+    await recomputeSeries(this,c,user,facts);
+    await recomputeRewards(this,c,user);
+  }
+  async read<T>(fn:(c:Client)=>Promise<T>):Promise<T>{
+    const c=await this.pool.connect();
+    try{await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');const data=await fn(c);await c.query('COMMIT');return data;}catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
   }
   async configuration(user:string,kind:string) {
     const c=await this.pool.connect();
     try {
       await c.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-      const data=kind==='profile'?await readProfile(c,user):kind==='home-preferences'?await readPreferences(c,user):await readHome(this,c,user);
+      const data=kind==='profile'?await readProfile(c,user,this):kind==='home-preferences'?await readPreferences(c,user):await readHome(this,c,user);
       await c.query('COMMIT');return data;
     } catch(e) {await c.query('ROLLBACK');throw e;} finally {c.release();}
   }
