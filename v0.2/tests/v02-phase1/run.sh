@@ -41,6 +41,12 @@ else
   printf 'browser infrastructure FAIL; see %s/start.log\n' "$artifacts"
   failed=1
 fi
+if [ "$failed" -eq 0 ]; then
+  step restart-prepare sh "$wrapper" deepseek -f "$overlay" --profile test run --rm --no-deps --pull never -e PHASE1_RESTART_MODE=prepare browser node_modules/.bin/tsx --test tests/v02-phase1/restart.test.ts
+  step service-restart sh "$wrapper" deepseek -f "$overlay" --profile test restart api web
+  step service-ready sh "$wrapper" deepseek -f "$overlay" --profile test up -d --wait --pull never --no-build api web gateway
+  step restart-check sh "$wrapper" deepseek -f "$overlay" --profile test run --rm --no-deps --pull never -e PHASE1_RESTART_MODE=check browser node_modules/.bin/tsx --test tests/v02-phase1/restart.test.ts
+fi
 if [ "$failed" -eq 0 ]; then status=PASS; else status=FAIL; fi
 printf '{"status":"%s","exit_code":%s,"required_skips_allowed":false}\n' "$status" "$failed" > "$artifacts/run.json"
 # Reproduce reports first; failure is never converted into a successful exit.

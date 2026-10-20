@@ -1,16 +1,22 @@
 {
   "date": "2026-10-20",
   "timezone": "Asia/Shanghai",
-  "implementation_revision": "f3203a7ab41881f3a896632ef28318edb7164f5c",
-  "executor": "Codex 代执行 DeepSeek 验收任务",
+  "implementation_revision": "0496660",
+  "frontend_delivery": "eda3dcd",
+  "integration": "6030a31",
+  "fixes": [
+    "ea18962",
+    "0496660"
+  ],
+  "executor": "Codex 代执行 DeepSeek 复验",
   "independent_person_review": false,
-  "overall": "FAIL",
+  "overall": "PASS",
   "baseline": {
     "typecheck": "PASS",
     "unit": "26/26",
     "integration": "63/63",
-    "web_suites": "12/12",
-    "web_assertions": 73,
+    "web_suites": "18/18",
+    "web_assertions": 134,
     "build": "PASS"
   },
   "api": {
@@ -41,59 +47,72 @@
   },
   "browser": {
     "B01": {
-      "status": "FAIL",
-      "reason": "Legal business values.session must persist and submit successfully\n\n0 !== 1\n",
-      "observations": {
-        "persisted_records": 0,
-        "storage_error_visible": 1
-      }
+      "status": "PASS"
     },
     "B02": {
-      "status": "FAIL",
-      "reason": "Unknown config retry must retain Idempotency-Key\n+ actual - expected\n\n+ 'ad7c16b0-6271-43e2-afdd-d012d7475739'\n- '00fc6f09-e848-4799-97ca-de6ec7292671'\n",
-      "observations": {
-        "requests": 2,
-        "keys": [
-          "00fc6f09-e848-4799-97ca-de6ec7292671",
-          "ad7c16b0-6271-43e2-afdd-d012d7475739"
-        ],
-        "entity_ids": [
-          "d0f0d5bf-ad22-4251-a5ad-b7b65e3a0705",
-          "7dbbc41a-5fc8-4d77-ba47-8db343ad9356"
-        ],
-        "modules_with_same_name": 2
-      }
+      "status": "PASS"
     },
     "B03": {
-      "status": "BLOCKED",
-      "reason": "Standard homepage/AI disabled container has not been implemented"
+      "status": "PASS"
     },
     "B04": {
-      "status": "BLOCKED",
-      "reason": "Gemini profile page/navigation is not implemented"
+      "status": "PASS"
     },
     "B05": {
-      "status": "BLOCKED",
-      "reason": "Gemini profile page/navigation is not implemented"
+      "status": "PASS"
     },
     "B06": {
-      "status": "BLOCKED",
-      "reason": "Persistent minimal-mode setting has not been implemented"
+      "status": "PASS"
     },
     "B07": {
-      "status": "BLOCKED",
-      "reason": "Homepage source cards are unavailable"
+      "status": "PASS"
     },
     "B08": {
-      "status": "BLOCKED",
-      "reason": "Disabled AI draft container has not been implemented"
+      "status": "PASS"
     },
     "B09": {
       "status": "PASS"
     },
     "B10": {
       "status": "PASS"
+    },
+    "B11": {
+      "status": "PASS"
+    },
+    "B12": {
+      "status": "PASS"
+    },
+    "B13": {
+      "status": "PASS"
+    },
+    "B14": {
+      "status": "PASS"
+    },
+    "B15": {
+      "status": "PASS"
+    },
+    "B16": {
+      "status": "PASS"
+    },
+    "B17": {
+      "status": "PASS"
+    },
+    "B18": {
+      "status": "PASS"
+    },
+    "B19": {
+      "status": "PASS"
+    },
+    "B20": {
+      "status": "PASS"
     }
+  },
+  "restart": {
+    "status": "PASS",
+    "profile_version": 2,
+    "preferences_version": 2,
+    "record_retained": true,
+    "minimal_ui": true
   },
   "browser_uncaught_errors": [],
   "environment": {
@@ -104,21 +123,21 @@
     "database_host": "postgres-test",
     "database_name": "life_dashboard_test",
     "locators": {
-      "ai": "[data-testid=home-ai-container], [data-home-ai-container]",
-      "avatar": "[data-testid=home-avatar], [data-avatar-placeholder]",
+      "ai": "#ld-home-ai-box",
+      "avatar": "#ld-home-avatar-slot",
       "profile": "form:has([name=nickname])",
       "minimal": "input[name=minimal_mode], [data-action=toggle-minimal-mode]"
     },
     "independent_author": false
   },
   "run": {
-    "status": "FAIL",
-    "exit_code": 1,
+    "status": "PASS",
+    "exit_code": 0,
     "required_skips_allowed": false
   },
-  "notes": [
-    "B03-B08 are blocked before unimplemented UI workflows; later assertions were not executed.",
-    "After the full run, browser request-completion synchronization was strengthened and all browser cases were rerun; results unchanged, B02 duplicate count=2.",
-    "No real user data, credentials, cookies or browser profiles are included."
+  "limits": [
+    "Synthetic isolated test database only; no real-user DB migration/restore or main-environment rollout.",
+    "360px Chromium viewport is not a physical phone.",
+    "No real AI, 3D resources, production deploy or independent-person review."
   ]
 }

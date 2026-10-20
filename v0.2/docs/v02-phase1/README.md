@@ -1,56 +1,41 @@
-# v0.2 第一阶段验收包
+# v0.2 第一阶段集成验收
 
-日期：2026-10-20（Asia/Shanghai）。执行人：Codex 代执行原 DeepSeek 验收任务。业务实现与验收代码由同一会话编写，测试未复用原后端测试断言，但**不构成不同人员或不同模型的独立审查**。
+日期：2026-10-20（Asia/Shanghai）。结论：**第一阶段在隔离环境验收通过**。
 
-被测业务基线为 `f3203a7`（后端实现 `4ecd665`）。验收分支 `v02/phase1-deepseek` 已从准备基线快进到该提交。当前被测 Web 为原基线；Gemini 工作树已出现开发中改动，但尚无交付提交，本轮未复制其未提交文件。
+业务基线 `0496660`：后端 `4ecd665`，Gemini 原交付 `eda3dcd`，三方集成 `6030a31`，集成可靠性修复 `ea18962` / `0496660`。执行人：Codex 代执行 DeepSeek 验收；测试单独编写，但后端与验收由同一会话处理，不构成不同人员或不同模型的独立审查。
 
-**结论：阶段未通过。** 独立 API 8 场景通过；真实浏览器 2 PASS、2 FAIL、6 BLOCKED，必需用例没有被跳过放行。完整入口返回 exit 1，原因见 [问题报告](问题报告.md) 与 [验收矩阵](验收矩阵.md)。
+- TypeScript、构建 PASS；单元 26/26，原后端集成 63/63。
+- Web 逻辑/渲染 18/18 套、134 断言。
+- 另写 API 8/8 场景（Node 含父测试 9/9）。
+- 真实 Chromium 20/20 场景（Node 含父测试 21/21），0 FAIL/BLOCKED/SKIP，未捕获页面错误为 0。
+- API/Web 实际重启后，资料/偏好/记录与极简界面持久性 R01 PASS。
+- 完整入口 exit 0，详见 [验收矩阵](验收矩阵.md)、[问题报告及解决状态](问题报告.md)、[实际结果快照](验收结果.json)。[初验失败快照](验收结果_初验.json) 保留历史证据。
 
-## 复跑
-
-从主仓库任意目录运行：
+## 一条命令复跑
 
 ```sh
 sh /Users/zhk/life_dashboard/v0.2/.runtime/worktrees/deepseek/v0.2/tests/v02-phase1/run.sh
 ```
 
-入口只操作 DeepSeek 专用项目，按顺序执行：专用 postgres-test → 迁移 → 类型/26 项单元/73 条 Web 断言/构建 → 原 63 项集成 → 独立 API 8 场景 → 实际 Chromium 浏览器 10 场景。任一步失败最终返回非零；不会安装包、下载浏览器/镜像、推送或部署。
+执行顺序：专用 postgres-test → 迁移 → 类型/单元/Web/构建 → 原后端集成 → 独立 API → 真实浏览器 → 准备重启探针 → restart api/web → readiness → 重启后读取和界面验证。任一步失败整体非零，不以 SKIP 放行。
 
-`tests/v02-phase1/compose.browser.yaml` 是测试目录内的专用夹具 overlay，不修改共享 Compose。它将 DeepSeek API 的数据库绑定到 `postgres-test/life_dashboard_test`，Origin 设为容器内部 `http://gateway`，供 Chromium 使用；测试口令是公开合成值。业务代码的 Origin 校验未被关闭，独立 API D01 另测跨 Origin 403。切勿把此 overlay 用于主环境；通过此 overlay 运行时 18183 是验收环境，不是个人数据服务。
+测试始终经主目录 `scripts/agents/compose.sh deepseek`，专用项目 `life-dashboard-v0-2-deepseek`。测试目录内 `compose.browser.yaml` 是独立夹具 overlay，不修改共享 Compose；API/browser 显式绑定 `postgres-test/life_dashboard_test`，内部 Origin=http://gateway，使用公开合成口令。重置必须同时断言 NODE_ENV=test、DATABASE_HOST=postgres-test、DATABASE_NAME=life_dashboard_test、PHASE1_ACCEPTANCE=deepseek。
 
-所有 Docker 命令都经主目录 `scripts/agents/compose.sh deepseek`，不直接使用旧发布脚本。数据库重置必须同时满足 `NODE_ENV=test`、`DATABASE_HOST=postgres-test`、`DATABASE_NAME=life_dashboard_test`、`PHASE1_ACCEPTANCE=deepseek`。不连接或清理 18080/18181/18182 数据库。
+不安装包、下载浏览器或镜像，不使用旧发布脚本，不接触 18080 主库，也不重置 18181/18182 数据库。数据库用例顺序执行，不要并发运行。通过测试 overlay 启动的 18183 是可重置验收环境，不存个人数据。
 
-独立 API 单独运行：
+## 实际定位与覆盖
 
-```sh
-sh /Users/zhk/life_dashboard/v0.2/scripts/agents/compose.sh deepseek run --rm --no-deps --pull never -e PHASE1_ACCEPTANCE=deepseek test node_modules/.bin/tsx --test tests/v02-phase1/api.test.ts
-```
+定位器已按 Gemini 实际交付校正，没有修改业务预期来迁就失败：
 
-需先启动专用 postgres-test 并完成迁移。不要让 API 测试、基线数据库测试和浏览器测试并发执行；它们顺序使用同一可重置测试库。
+- 标准/极简首页：`#ld-home-standard`、`#ld-home-minimal`；AI=`#ld-home-ai-box`，静态形象=`#ld-home-avatar-slot`。
+- 显示子标签 `[data-subtab=display]`，极简切换 `[data-action=toggle-minimal-mode]`；个人资料子标签 `[data-subtab=profile]`，表单 `#ld-form-profile`，保存 `#ld-profile-save-btn`。
+- 冲突采用 `[data-action=profile-conflict-adopt]`；配置恢复 `[data-action=resume-pending-config]`；配置状态 `[data-config-submission-status]`，提交 `#ld-config-submit-btn`。
+- 首页来源使用实际详情按钮 `[data-action=home-metric-detail]` / `[data-action=home-task-detail]`。
 
-## 浏览器接入约定与限制
+B01–B10 为原必需浏览器场景；B11–B20 补验资料未知结果后的修改、偏好存储故障、其余四类配置的损坏回执/刷新/原包确认、归档资料、360px、真实空首页和实际资料表单七类型/删除。五类配置确认旧操作后保留后续工作草稿；已确认的新建配置不会再次创建，草稿可复制或显式丢弃；资料可基于确认后的版本继续保存到同一用户资料。
 
-当前旧 Web 的记录/配置定位使用真实已有 ID：`#ld-record-template-select`、`#ld-record-submit-btn`、`#ld-form-create-module`。新 UI 尚未交付，临时接入定位信息如下，**不是额外产品需求**：
+## 证据与限制
 
-- 首页 AI：`[data-testid=home-ai-container]` 或 `[data-home-ai-container]`。
-- 3D 静态回退：`[data-testid=home-avatar]` 或 `[data-avatar-placeholder]`。
-- 资料：表单包含 `[name=nickname]`、`[name=bio]`；入口按“个人信息/个人资料”可访问名称定位。
-- 极简开关：`input[name=minimal_mode]` 或 `[data-action=toggle-minimal-mode]`。
-- 冲突采用基线、未知配置恢复和来源跳转按按钮/链接可访问名称定位。
+专用 `v0.2/.runtime/test-artifacts/v02-phase1-deepseek/` 中包含 `run.json`、`checks.log`、`baseline-integration.log`、`api.log/api.json`、`browser.log/browser.json`、`environment.json`、`restart*.log/restart.json`、`mobile.png`、`empty-home.png`、`restart-minimal.png`。被忽略的原始产物不入 Git；入库 JSON 仅含合成测试信息，没有口令、Cookie 或真实个人数据。较早失败截图仅属历史运行，不代表当前结果，以当前 JSON/日志及入库快照为准。
 
-Gemini 交付后应根据实际稳定定位信息调整测试选择器，再在本工作树集成该提交并完整复跑。当前 B03–B08 在检查缺失界面后以 BLOCKED 失败，后续断言是已编写但未实际执行的用例，不算测试通过。选择器不匹配本身不能作为产品缺陷定论；本轮缺失判断还由业务基线 `main.ts` 的空首页与不存在资料/极简逻辑交叉确认。
-
-浏览器执行覆盖：合法 session 字段；配置提交成功丢回执后沿原键/ID/完整载荷确认及刷新恢复入口；标准首页；资料失败保留/409 显式采用基线；未保存离开提醒；极简偏好刷新保留/居中/固定顺序；指标与任务来源跳转；AI 草稿/发送禁用、3D 资源不下载；旧记录丢回执刷新恢复；存储失败不发送。当前未执行到的新界面场景，不能代替未来端到端验收。
-
-## 证据
-
-运行产物：专用 `v0.2/.runtime/test-artifacts/v02-phase1-deepseek/`。
-
-- `run.json`：一条命令整体退出状态。
-- `checks.log`、`baseline-integration.log`、`api.log`、`browser.log`：实际命令输出。
-- `api.json`、`browser.json`：逐项状态；BLOCKED 在 Node 测试器中按失败计，0 skip。
-- `environment.json`：Node/Chromium/PostgreSQL 版本、专用库、页面定位约定。
-- `B01.png`–`B08.png`：失败/阻断截图；`browser-errors.json` 为未捕获浏览器错误列表。
-- [验收结果.json](验收结果.json)：本次逐项结果的入库快照，只包含合成验收信息；原始截图和运行产物不提交。
-
-浏览器使用新建 Playwright context，不借用宿主个人档案。没有真实 AI、手机实机、离线、外网部署或 CI 验收。已通过备份/空库恢复验证；未对真实用户数据库迁移或备份做演练。
+当前通过是第一阶段的隔离集成验收；未部署到 18080 主用户环境，未对真实用户数据库迁移/恢复演练。360px 为 Chromium 视口，非手机实机；未做离线、同步、真实 AI、3D 引擎/资源、钱包、周期、完整 v0.2 发布或 CI 验收。
