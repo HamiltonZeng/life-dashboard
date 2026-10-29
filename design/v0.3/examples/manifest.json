@@ -1,0 +1,46 @@
+{
+  "schema_version": "contract-fixtures/1.0",
+  "synthetic_only": true,
+  "cases": [
+    {
+      "example": "goal-plan.json",
+      "schema": "ai-decision.schema.json"
+    },
+    {
+      "example": "record-running.json",
+      "schema": "ai-decision.schema.json"
+    },
+    {
+      "example": "clarification.json",
+      "schema": "ai-decision.schema.json"
+    },
+    {
+      "example": "chat-message.json",
+      "schema": "public-api.schema.json"
+    },
+    {
+      "example": "report-generate.json",
+      "schema": "public-api.schema.json"
+    },
+    {
+      "example": "weekly-schedule.json",
+      "schema": "public-api.schema.json"
+    },
+    {
+      "example": "auto-applied-turn.json",
+      "schema": "public-api.schema.json"
+    },
+    {
+      "example": "report-facts.json",
+      "schema": "report-facts.schema.json"
+    },
+    {
+      "example": "report-narrative.json",
+      "schema": "report-narrative.schema.json"
+    },
+    {
+      "example": "internal-reward-quote.json",
+      "schema": "internal-reward-quote.schema.json"
+    }
+  ]
+}

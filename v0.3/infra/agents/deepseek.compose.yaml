@@ -1,0 +1,20 @@
+x-shared-volumes: &shared-volumes
+  - ${LIFE_DASHBOARD_SHARED_ROOT:?Use scripts/agents/compose.sh}/node_modules:/workspace/node_modules:ro
+  - ${LIFE_DASHBOARD_SHARED_ROOT:?Use scripts/agents/compose.sh}/.runtime/cache/corepack:/workspace/.runtime/cache/corepack:ro
+services:
+  tools:
+    volumes: *shared-volumes
+    environment: {COREPACK_ENABLE_NETWORK: '0'}
+  api:
+    volumes: *shared-volumes
+    command: [node_modules/.bin/tsx, watch, apps/api/src/main.ts]
+    environment: {APP_ORIGIN: 'http://localhost:18183', COREPACK_ENABLE_NETWORK: '0'}
+  web:
+    volumes: *shared-volumes
+    command: [sh, -c, 'node scripts/build-web.mjs && node apps/web/dev-server.mjs']
+    environment: {APP_ORIGIN: 'http://localhost:18183', COREPACK_ENABLE_NETWORK: '0'}
+  gateway:
+    ports: !override ['127.0.0.1:18183:80']
+  test:
+    volumes: *shared-volumes
+    environment: {COREPACK_ENABLE_NETWORK: '0'}

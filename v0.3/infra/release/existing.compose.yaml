@@ -1,0 +1,21 @@
+x-volumes: &dependencies
+ - ${LIFE_DASHBOARD_DEPENDENCIES:?Specify existing dependency root}/node_modules:/workspace/node_modules:ro
+ - ${LIFE_DASHBOARD_DEPENDENCIES:?Specify existing dependency root}/.runtime/cache/corepack:/workspace/.runtime/cache/corepack:ro
+services:
+ tools:
+  volumes: *dependencies
+  environment: {COREPACK_ENABLE_NETWORK: '0'}
+ api:
+  volumes: *dependencies
+  command: [node_modules/.bin/tsx, apps/api/src/main.ts]
+  environment:
+   COREPACK_ENABLE_NETWORK: '0'
+   APP_ORIGIN: http://localhost:${LIFE_DASHBOARD_RELEASE_PORT:-18184}
+ web:
+  volumes: *dependencies
+  command: [sh, -c, 'node scripts/build-web.mjs && node apps/web/dev-server.mjs']
+  environment:
+   COREPACK_ENABLE_NETWORK: '0'
+   APP_ORIGIN: http://localhost:${LIFE_DASHBOARD_RELEASE_PORT:-18184}
+ gateway:
+  ports: !override ['127.0.0.1:${LIFE_DASHBOARD_RELEASE_PORT:-18184}:80']

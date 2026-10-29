@@ -1,0 +1,41 @@
+{
+  "schema_version": "report-narrative/1.0",
+  "snapshot_id": "90000000-0000-4000-8000-000000000030",
+  "summary": "本周已有可回顾的学习记录；未记录的日期仍属未知。",
+  "selected_fact_ids": [
+    "study_minutes",
+    "learning_days"
+  ],
+  "highlights": [
+    {
+      "kind": "observation",
+      "text": "累计学习{{fact:study_minutes}}；有记录的学习日期数为{{fact:learning_days}}。",
+      "fact_refs": [
+        "study_minutes",
+        "learning_days"
+      ]
+    }
+  ],
+  "concerns": [
+    {
+      "kind": "inference",
+      "text": "记录覆盖不完整，目前不适合判断是否每天都执行了计划。",
+      "fact_refs": [
+        "learning_days"
+      ]
+    }
+  ],
+  "suggestions": [
+    {
+      "kind": "suggestion",
+      "text": "可以先维持当前节奏，并在结束学习后及时记录。",
+      "fact_refs": [
+        "study_minutes",
+        "learning_days"
+      ]
+    }
+  ],
+  "limitations": [
+    "本报告基于用户已确认记录，不代表全部现实行为。"
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-21",
+  "phase": "v0.3-phase1",
+  "code": "implemented",
+  "offline_acceptance": "PASS",
+  "backend_test_nodes": 136,
+  "unit_protocol_schedule_test_nodes": 37,
+  "web_render_suites": 18,
+  "web_render_assertions": 134,
+  "web_functional_tests": 8,
+  "browser": {
+    "status": "PASS",
+    "checkpoints": [
+      "plan-committed-with-no-facts",
+      "goal-link",
+      "metric-link",
+      "task-link",
+      "series-link",
+      "manual-20-minutes-linked-to-wallet-achievement",
+      "refresh-preserves-receipt-without-duplicate",
+      "stale-undo-rejected-and-modified-difference-visible",
+      "draft-and-xss",
+      "rollback-recoverable-error",
+      "mobile-viewport-and-keyboard-focus",
+      "clarification-restricts-auto-to-preview",
+      "clarification-cancels-before-model-retry"
+    ],
+    "page_errors": [],
+    "real_mobile_device": false,
+    "provider": "synthetic-offline"
+  },
+  "real_provider": {
+    "status": "not_run",
+    "reason": "Server-side DeepSeek key, explicit enablement or model ID missing.",
+    "provider": "deepseek",
+    "provider_requests": 0
+  },
+  "deployment_url": "http://localhost:18380",
+  "migrations": [
+    "0005_v03_planning.sql"
+  ],
+  "old_migrations_unchanged": true,
+  "backup_schema": 2,
+  "real_mobile_device": "not_run",
+  "github_push": false,
+  "restart": {
+    "status": "PASS",
+    "actual_api_worker_restart": true,
+    "stable_run": true,
+    "application": "22ef682b-1f1d-47ce-9caf-a4c10b578251",
+    "no_duplicate_facts": true
+  },
+  "review_closeout": {
+    "date": "2026-10-21",
+    "review_findings": {
+      "F01": "fixed",
+      "F02": "fixed",
+      "F03": "fixed",
+      "F04": "fixed"
+    },
+    "closeout_regression_nodes": 15,
+    "offline_acceptance": "PASS",
+    "migrations_added": []
+  }
+}

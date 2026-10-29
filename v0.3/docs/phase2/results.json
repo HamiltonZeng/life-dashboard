@@ -1,0 +1,202 @@
+{
+  "schema_version": "phase2-acceptance/1.0",
+  "status": "主要功能代码完成，可进入真实API联调",
+  "generated_at": "2026-10-21T10:51:49.005117+00:00",
+  "tasks": {
+    "P2-00": "implemented_offline_verified",
+    "P2-01": "implemented_offline_verified",
+    "P2-02": "implemented_offline_verified",
+    "P2-03": "implemented_offline_verified",
+    "P2-04": "implemented_offline_verified",
+    "P2-05": "implemented_offline_verified",
+    "P2-06": "implemented_offline_verified",
+    "P2-07": "implemented_offline_verified",
+    "P2-08": "implemented_offline_verified"
+  },
+  "acceptance": {
+    "P2-A01": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A02": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A03": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A04": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A05": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A06": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A07": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A08": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A09": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A10": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A11": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A12": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A13": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A14": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A15": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A16": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A17": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A18": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A19": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    },
+    "P2-A20": {
+      "status": "passed_offline",
+      "evidence": "acceptance.md"
+    }
+  },
+  "tests": {
+    "legacy_and_phase1_integration_nodes": 136,
+    "protocol_and_unit_nodes": 37,
+    "phase2_integration_nodes": 31,
+    "backend_total_nodes": 204,
+    "frontend_node_tests": 9,
+    "frontend_render_suites": 18,
+    "frontend_assertions": 134,
+    "phase1_chromium_checkpoints": 13,
+    "phase2_chromium_checkpoints": 13,
+    "browser_page_errors": [],
+    "phase2_actual_restart": true,
+    "final_receipt_versions_verified": true,
+    "phase1_actual_restart": true
+  },
+  "real_provider": {
+    "status": "not_run",
+    "requests": 0,
+    "groups": {
+      "plan": {
+        "status": "not_run",
+        "group": "plan",
+        "provider_requests": 0,
+        "reason": "Explicit synthetic-only confirmation, enabled server, key and model are required."
+      },
+      "extract": {
+        "status": "not_run",
+        "group": "extract",
+        "provider_requests": 0,
+        "reason": "Explicit synthetic-only confirmation, enabled server, key and model are required."
+      },
+      "correction": {
+        "status": "not_run",
+        "group": "correction",
+        "provider_requests": 0,
+        "reason": "Explicit synthetic-only confirmation, enabled server, key and model are required."
+      },
+      "profile": {
+        "status": "not_run",
+        "group": "profile",
+        "provider_requests": 0,
+        "reason": "Explicit synthetic-only confirmation, enabled server, key and model are required."
+      },
+      "report": {
+        "status": "not_run",
+        "group": "report",
+        "provider_requests": 0,
+        "reason": "Explicit synthetic-only confirmation, enabled server, key and model are required."
+      },
+      "schedule": {
+        "status": "not_run",
+        "group": "schedule",
+        "provider_requests": 0,
+        "reason": "Explicit synthetic-only confirmation, enabled server, key and model are required."
+      },
+      "reward_quote": {
+        "status": "not_run",
+        "group": "reward_quote",
+        "provider_requests": 0,
+        "reason": "Explicit synthetic-only confirmation, enabled server, key and model are required."
+      }
+    },
+    "suite_daily_request_cap": 12
+  },
+  "real_mobile_device": "not_run",
+  "deployment": {
+    "url": "http://localhost:18380/",
+    "version": "0.3.0-phase2",
+    "private_backup": ".runtime/backups/phase2-20261021T104210Z",
+    "backup_schema_version": 3,
+    "migrations": {
+      "0001_core.sql": "4468654dc6158136105eb1b84a330a4a59cdf4f96246a74d7298e1d4059a21c0",
+      "0002_ai.sql": "cc1d568b6cdc3a6a128f36e0bbb803acde3d9e2ea965ea20b73857fc2f974a83",
+      "0003_v02_phase1.sql": "e1d799602c82cddf2b7bd6357bfd269ce9e43abd3ba1cccee3f19933e304fa23",
+      "0004_v02_phase2.sql": "af9eafedeec9d6cb3b088ff7d29eeae96bfdc500e800b5b5255fbc7895760e75",
+      "0005_v03_planning.sql": "99505fd6fcd9150fdbbb96246c3b1cf3d3d242bdec8c5db5e3136c20e6b818e6",
+      "0006_v03_workflows.sql": "a5943c88cc3cb4341b2abeccbd285af70f57f18d5026fa0f0e0e932587538f4a",
+      "0007_v03_schedule_identity.sql": "36260d949093f1c2154fc9ae097414fd03e773b25fbbb5cc7064dc9a0b4dca17"
+    },
+    "immutable_migrations_verified": [
+      "0001_core.sql",
+      "0002_ai.sql",
+      "0003_v02_phase1.sql",
+      "0004_v02_phase2.sql",
+      "0005_v03_planning.sql"
+    ]
+  },
+  "reproducibility": {
+    "source_files": 213,
+    "source_manifest": "source-manifest.json",
+    "v02_source_files_unchanged": 159,
+    "dependency_downloads": 0,
+    "image_downloads": 0
+  },
+  "evidence_root": ".runtime/test-artifacts/v03-phase2/",
+  "evidence": {
+    "final_integration": "final-integration.log",
+    "contracts": "final-contracts.log",
+    "phase1_regression": "phase1-regression.log",
+    "phase1_browser": "phase1-browser-regression.log",
+    "phase2_browser": "browser/result.json",
+    "restart": "restart.json",
+    "real_api_defaults": "real-api-defaults.log"
+  }
+}

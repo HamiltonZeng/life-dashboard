@@ -1,0 +1,15 @@
+:80 {
+  # Unified local entry point: API and health checks go to Fastify, everything
+  # else (SPA HTML routes, /dist/*.js, /packages/ui/dist/*.js) is served by the
+  # frontend dev/static server, which also proxies /api and /health for same-origin
+  # development.
+  handle /api/* {
+    reverse_proxy api:3001
+  }
+  handle /health/* {
+    reverse_proxy api:3001
+  }
+  handle {
+    reverse_proxy web:5173
+  }
+}

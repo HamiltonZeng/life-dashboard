@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+const base='http://gateway';
+assert.equal((await fetch(base+'/health/ready')).status,200);
+const login=await fetch(base+'/api/v1/session',{method:'POST',headers:{Origin:process.env.APP_ORIGIN!,'Content-Type':'application/json'},body:JSON.stringify({login_secret:process.env.LOCAL_LOGIN_SECRET})});
+assert.equal(login.status,200);
+const cookie=login.headers.get('set-cookie')!.split(';')[0];
+const bootstrap=await fetch(base+'/api/v1/bootstrap',{headers:{Cookie:cookie}});
+assert.equal(bootstrap.status,200);
+const {data}=await bootstrap.json() as any;
+assert.equal(data.modules.length,4);assert.equal(data.record_types.length,4);
+assert.equal(data.records.length,0);assert.equal(data.tasks.length,0);assert.equal(data.achievement_awards.length,0);
+assert.equal((await fetch(base+'/api/v1/session',{method:'DELETE',headers:{Cookie:cookie,Origin:process.env.APP_ORIGIN!}})).status,200);
+console.log('PASS: gateway → API → PostgreSQL; four default modules/templates, no fictional records/tasks/awards; session revoked.');

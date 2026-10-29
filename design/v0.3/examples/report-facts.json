@@ -1,0 +1,99 @@
+{
+  "schema_version": "report-facts/1.0",
+  "snapshot_id": "90000000-0000-4000-8000-000000000030",
+  "report_identity": "synthetic:weekly:2026-W42:learning:complete",
+  "kind": "weekly",
+  "period_key": "2026-W42",
+  "timezone": "Asia/Shanghai",
+  "start_at": "2026-10-12T00:00:00+08:00",
+  "end_at": "2026-10-19T00:00:00+08:00",
+  "cutoff_at": "2026-10-19T00:00:00+08:00",
+  "partial": false,
+  "snapshot_cursor": 40,
+  "module_ids": [
+    "90000000-0000-4000-8000-000000000001"
+  ],
+  "facts": [
+    {
+      "fact_id": "study_minutes",
+      "label": "学习时长",
+      "calculation": "确认记录duration_minutes精确合计，非趋势图桶均值",
+      "value": "140",
+      "unit": "分钟",
+      "data_source": "deterministic_derived",
+      "coverage": {
+        "valid_days": 4,
+        "expected_days": 7,
+        "source_count": 4
+      },
+      "previous_fact_id": null,
+      "source_refs": [
+        {
+          "entity_type": "record",
+          "id": "90000000-0000-4000-8000-000000000040",
+          "version": 1
+        },
+        {
+          "entity_type": "record",
+          "id": "90000000-0000-4000-8000-000000000041",
+          "version": 1
+        },
+        {
+          "entity_type": "record",
+          "id": "90000000-0000-4000-8000-000000000042",
+          "version": 1
+        },
+        {
+          "entity_type": "record",
+          "id": "90000000-0000-4000-8000-000000000043",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "fact_id": "learning_days",
+      "label": "有记录的学习日期数",
+      "calculation": "按Asia/Shanghai不同自然日期去重",
+      "value": "4",
+      "unit": "天",
+      "data_source": "deterministic_derived",
+      "coverage": {
+        "valid_days": 4,
+        "expected_days": 7,
+        "source_count": 4
+      },
+      "previous_fact_id": null,
+      "source_refs": [
+        {
+          "entity_type": "record",
+          "id": "90000000-0000-4000-8000-000000000040",
+          "version": 1
+        },
+        {
+          "entity_type": "record",
+          "id": "90000000-0000-4000-8000-000000000041",
+          "version": 1
+        },
+        {
+          "entity_type": "record",
+          "id": "90000000-0000-4000-8000-000000000042",
+          "version": 1
+        },
+        {
+          "entity_type": "record",
+          "id": "90000000-0000-4000-8000-000000000043",
+          "version": 1
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "valid_days": 4,
+    "expected_days": 7,
+    "source_count": 4
+  },
+  "warnings": [
+    "只有4个日期有学习记录；其他日期未知，不能断言没有学习。"
+  ],
+  "content_hash": "ebee7fa70da4fd6d255e1381f138edbef910e4104e20331268dca1a2ac1ff155"
+}

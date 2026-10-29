@@ -1,0 +1,29 @@
+{
+  "status": "PASS",
+  "scope": "design_contracts_only",
+  "schemas": 5,
+  "valid_examples": 10,
+  "negative_cases": 15,
+  "negative_case_names": [
+    "goal-plan.json: rewardInjection",
+    "goal-plan.json: walletAction",
+    "goal-plan.json: directUnlock",
+    "record-running.json: completedRecord",
+    "record-running.json: nestedExecutableValue",
+    "record-running.json: invalidTimestamp",
+    "weekly-schedule.json: invalidTime",
+    "chat-message.json: emptyRequest",
+    "auto-applied-turn.json: missingReceiptIdentity",
+    "internal-reward-quote.json: dailyQuoteCap",
+    "internal-reward-quote.json: quotePolicyOverride",
+    "cycle",
+    "duplicate_ref",
+    "unknown_local",
+    "unknown_report_fact"
+  ],
+  "validator": "Existing Fastify Ajv 2020 + ajv-formats",
+  "graph_and_fact_reference_checks": true,
+  "application_implemented": false,
+  "provider_api_called": false,
+  "database_accessed": false
+}

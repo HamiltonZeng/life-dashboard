@@ -1,0 +1,13 @@
+{
+  "schema_version": "reward-quote/1.1",
+  "policy_version": "reward-policy-ai-v1",
+  "quotes": [
+    {
+      "template_local_ref": "english_daily",
+      "rule_hash": "d6a674cc856690fd1420a7a7517a3850fe37aef11bd2c053e5bc4807a0d7a74f",
+      "rationale": "合成报价示例：按日常规则和类别上限建议，不表示真实调用或已发放。",
+      "category": "daily",
+      "amount": 8
+    }
+  ]
+}

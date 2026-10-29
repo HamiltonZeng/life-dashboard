@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://life-dashboard.local/schemas/v0.3/report-narrative.schema.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "report-narrative/1.0"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 3000
+    },
+    "selected_fact_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 100
+      },
+      "maxItems": 30,
+      "uniqueItems": true
+    },
+    "highlights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "observation",
+              "inference",
+              "suggestion"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "fact_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "kind",
+          "text",
+          "fact_refs"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 10
+    },
+    "concerns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "observation",
+              "inference",
+              "suggestion"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "fact_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "kind",
+          "text",
+          "fact_refs"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 10
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "observation",
+              "inference",
+              "suggestion"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "fact_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "kind",
+          "text",
+          "fact_refs"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 10
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 1000
+      },
+      "minItems": 0,
+      "maxItems": 10
+    }
+  },
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "summary",
+    "selected_fact_ids",
+    "highlights",
+    "concerns",
+    "suggestions",
+    "limitations"
+  ],
+  "additionalProperties": false
+}

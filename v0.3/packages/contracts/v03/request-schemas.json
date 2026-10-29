@@ -1,0 +1,1496 @@
+{
+  "ChatMessageInput": {
+    "type": "object",
+    "properties": {
+      "schema_version": {
+        "const": "client-command/1.0"
+      },
+      "client_message_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8000
+      },
+      "entrypoint": {
+        "type": "string",
+        "enum": [
+          "home",
+          "task_create",
+          "record_create",
+          "metrics",
+          "achievements",
+          "profile",
+          "reports"
+        ]
+      },
+      "execution": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "preview"
+        ]
+      },
+      "selected_refs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "entity_type": {
+              "type": "string",
+              "enum": [
+                "module",
+                "goal",
+                "record_type",
+                "metric",
+                "task_template",
+                "task_instance",
+                "achievement_series",
+                "profile_field",
+                "record",
+                "report"
+              ]
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "entity_type",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 0,
+        "maxItems": 30
+      }
+    },
+    "required": [
+      "schema_version",
+      "client_message_id",
+      "text",
+      "entrypoint",
+      "execution",
+      "selected_refs"
+    ],
+    "additionalProperties": false
+  },
+  "ApplyInput": {
+    "type": "object",
+    "properties": {
+      "candidate_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "content_hash": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      },
+      "confirmation_token": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 2000
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "candidate_version",
+      "content_hash",
+      "confirmation_token"
+    ],
+    "additionalProperties": false
+  },
+  "ReportGenerateInput": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string",
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly"
+        ]
+      },
+      "period": {
+        "type": "string",
+        "enum": [
+          "current",
+          "previous",
+          "custom"
+        ]
+      },
+      "start_date": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "end_date": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "timezone": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "module_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "minItems": 0,
+        "maxItems": 10
+      },
+      "force_new_revision": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "kind",
+      "period",
+      "start_date",
+      "end_date",
+      "timezone",
+      "module_ids",
+      "force_new_revision"
+    ],
+    "additionalProperties": false
+  },
+  "ReportScheduleInput": {
+    "type": "object",
+    "properties": {
+      "base_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "local_time": {
+        "type": "string",
+        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+      },
+      "timezone": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "coverage": {
+        "type": "string",
+        "enum": [
+          "previous_complete",
+          "current_to_run"
+        ]
+      },
+      "weekday": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "month_day": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "short_month_policy": {
+        "const": "last_day"
+      },
+      "catch_up": {
+        "type": "string",
+        "enum": [
+          "latest_only",
+          "skip"
+        ]
+      },
+      "module_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "minItems": 0,
+        "maxItems": 10
+      },
+      "preview_token": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 2000
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "base_version",
+      "enabled",
+      "local_time",
+      "timezone",
+      "coverage",
+      "weekday",
+      "month_day",
+      "short_month_policy",
+      "catch_up",
+      "module_ids",
+      "preview_token"
+    ],
+    "additionalProperties": false
+  },
+  "TurnResponse": {
+    "type": "object",
+    "properties": {
+      "schema_version": {
+        "const": "turn-response/1.0"
+      },
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "needs_clarification",
+          "awaiting_confirmation",
+          "applying",
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "operation_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "conversation_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "message_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "answer": {
+        "type": "string",
+        "maxLength": 10000
+      },
+      "clarification": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "question_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "question": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "choices": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "minItems": 0,
+                "maxItems": 6
+              },
+              "blocking_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "minItems": 1,
+                "maxItems": 30
+              }
+            },
+            "required": [
+              "question_id",
+              "question",
+              "choices",
+              "blocking_fields"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "proposal": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "candidate_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "validated",
+                  "awaiting_confirmation",
+                  "auto_authorized",
+                  "applying",
+                  "applied",
+                  "invalid",
+                  "expired",
+                  "cancelled"
+                ]
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 4000
+              },
+              "confirmation_required": {
+                "type": "boolean"
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "candidate_id",
+              "version",
+              "status",
+              "summary",
+              "confirmation_required",
+              "expires_at"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "application": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "schema_version": {
+                "const": "application-receipt/1.0"
+              },
+              "application_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "operation_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "cursor": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "id_map": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "local_ref": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                    },
+                    "entity_type": {
+                      "type": "string",
+                      "enum": [
+                        "goal",
+                        "module",
+                        "record_type",
+                        "metric",
+                        "task_template",
+                        "task_instance",
+                        "achievement_series",
+                        "profile_field",
+                        "record",
+                        "report_schedule",
+                        "report"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "local_ref",
+                    "entity_type",
+                    "id",
+                    "version"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 0,
+                "maxItems": 30
+              },
+              "affected_entities": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "entity_type": {
+                      "type": "string",
+                      "enum": [
+                        "goal",
+                        "module",
+                        "record_type",
+                        "metric",
+                        "task_template",
+                        "task_instance",
+                        "achievement_series",
+                        "profile_field",
+                        "record",
+                        "report_schedule",
+                        "report"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "entity_type",
+                    "id",
+                    "version"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 0,
+                "maxItems": 100
+              },
+              "undo_available": {
+                "type": "boolean"
+              },
+              "undo_unavailable_reason": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "schema_version",
+              "application_id",
+              "operation_id",
+              "cursor",
+              "id_map",
+              "affected_entities",
+              "undo_available",
+              "undo_unavailable_reason"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "report": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "report_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "queued",
+                  "generating",
+                  "ready",
+                  "failed",
+                  "outdated"
+                ]
+              },
+              "coverage": {
+                "type": "string",
+                "enum": [
+                  "previous_complete",
+                  "current_to_run",
+                  "custom"
+                ]
+              }
+            },
+            "required": [
+              "report_id",
+              "revision",
+              "status",
+              "coverage"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "message": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "retry_after_ms": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "retryable",
+              "retry_after_ms"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "schema_version",
+      "id",
+      "version",
+      "status",
+      "operation_id",
+      "conversation_id",
+      "message_id",
+      "answer",
+      "clarification",
+      "proposal",
+      "application",
+      "report",
+      "error"
+    ],
+    "additionalProperties": false
+  },
+  "ConversationCreateInput": {
+    "type": "object",
+    "properties": {
+      "entrypoint": {
+        "type": "string",
+        "enum": [
+          "home",
+          "task_create",
+          "record_create",
+          "metrics",
+          "achievements",
+          "profile",
+          "reports"
+        ]
+      },
+      "title": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 100
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "entrypoint",
+      "title"
+    ],
+    "additionalProperties": false
+  },
+  "ClarificationInput": {
+    "type": "object",
+    "properties": {
+      "run_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "question_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "answer_text": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      }
+    },
+    "required": [
+      "run_version",
+      "question_id",
+      "answer_text"
+    ],
+    "additionalProperties": false
+  },
+  "CancelInput": {
+    "type": "object",
+    "properties": {
+      "base_version": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "base_version"
+    ],
+    "additionalProperties": false
+  },
+  "UndoInput": {
+    "type": "object",
+    "properties": {
+      "preview_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "confirmation_token": {
+        "type": "string",
+        "maxLength": 2000
+      }
+    },
+    "required": [
+      "preview_version",
+      "confirmation_token"
+    ],
+    "additionalProperties": false
+  },
+  "AiPreferencesInput": {
+    "type": "object",
+    "properties": {
+      "base_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "automatic_mode": {
+        "type": "string",
+        "enum": [
+          "clear_commands",
+          "preview_all"
+        ]
+      },
+      "readable_module_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "maxItems": 10
+      },
+      "auto_config_objects_limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 12
+      },
+      "auto_record_count_limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5
+      }
+    },
+    "required": [
+      "base_version",
+      "automatic_mode",
+      "readable_module_ids",
+      "auto_config_objects_limit",
+      "auto_record_count_limit"
+    ],
+    "additionalProperties": false
+  },
+  "ReportSchedulePreviewInput": {
+    "type": "object",
+    "properties": {
+      "base_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "local_time": {
+        "type": "string",
+        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+      },
+      "timezone": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "coverage": {
+        "type": "string",
+        "enum": [
+          "previous_complete",
+          "current_to_run"
+        ]
+      },
+      "weekday": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "month_day": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "short_month_policy": {
+        "const": "last_day"
+      },
+      "catch_up": {
+        "type": "string",
+        "enum": [
+          "latest_only",
+          "skip"
+        ]
+      },
+      "module_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "minItems": 0,
+        "maxItems": 10
+      }
+    },
+    "required": [
+      "base_version",
+      "enabled",
+      "local_time",
+      "timezone",
+      "coverage",
+      "weekday",
+      "month_day",
+      "short_month_policy",
+      "catch_up",
+      "module_ids"
+    ],
+    "additionalProperties": false
+  },
+  "ProposalPreviewInput": {
+    "type": "object",
+    "properties": {
+      "candidate_version": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "candidate_version"
+    ],
+    "additionalProperties": false
+  },
+  "ReportJob": {
+    "type": "object",
+    "properties": {
+      "schema_version": {
+        "const": "report-job/1.0"
+      },
+      "report_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "job_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "status": {
+        "enum": [
+          "queued",
+          "generating",
+          "ready",
+          "failed",
+          "outdated"
+        ]
+      }
+    },
+    "required": [
+      "schema_version",
+      "report_id",
+      "revision",
+      "job_id",
+      "status"
+    ],
+    "additionalProperties": false
+  },
+  "ReportCancelInput": {
+    "type": "object",
+    "properties": {
+      "base_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "base_version",
+      "revision"
+    ],
+    "additionalProperties": false
+  },
+  "ReportListQuery": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly"
+        ]
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100000
+      },
+      "period": {
+        "enum": [
+          "current",
+          "previous",
+          "custom"
+        ]
+      },
+      "module_id": {
+        "type": "string",
+        "format": "uuid"
+      }
+    },
+    "required": [
+      "limit",
+      "offset"
+    ],
+    "additionalProperties": false
+  },
+  "ReportScheduleConfig": {
+    "type": "object",
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "local_time": {
+        "type": "string",
+        "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+      },
+      "timezone": {
+        "type": "string",
+        "maxLength": 80
+      },
+      "coverage": {
+        "type": "string",
+        "enum": [
+          "previous_complete",
+          "current_to_run"
+        ]
+      },
+      "weekday": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "month_day": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 31
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "short_month_policy": {
+        "const": "last_day"
+      },
+      "catch_up": {
+        "type": "string",
+        "enum": [
+          "latest_only",
+          "skip"
+        ]
+      },
+      "module_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "minItems": 0,
+        "maxItems": 10
+      }
+    },
+    "required": [
+      "enabled",
+      "local_time",
+      "timezone",
+      "coverage",
+      "weekday",
+      "month_day",
+      "short_month_policy",
+      "catch_up",
+      "module_ids"
+    ],
+    "additionalProperties": false
+  },
+  "ReportScheduleProjection": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "uuid"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "kind": {
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly"
+        ]
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "config": {
+        "$ref": "#/$defs/ReportScheduleConfig"
+      },
+      "next_run_at": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "pause_reason": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "version",
+      "config",
+      "next_run_at",
+      "pause_reason"
+    ],
+    "additionalProperties": false
+  },
+  "ReportSchedulePreview": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly"
+        ]
+      },
+      "base_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "config": {
+        "$ref": "#/$defs/ReportScheduleConfig"
+      },
+      "next_run_at": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "module_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "minItems": 0,
+        "maxItems": 10
+      },
+      "preview_token": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string"
+      },
+      "limits": {
+        "type": "object",
+        "properties": {
+          "max_attempts": {
+            "const": 2
+          },
+          "parent_max_attempts": {
+            "const": 6
+          }
+        },
+        "required": [
+          "max_attempts",
+          "parent_max_attempts"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "kind",
+      "base_version",
+      "config",
+      "next_run_at",
+      "module_ids",
+      "preview_token",
+      "summary",
+      "limits"
+    ],
+    "additionalProperties": false
+  },
+  "ReportCancelResult": {
+    "type": "object",
+    "properties": {
+      "report_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "status": {
+        "enum": [
+          "queued",
+          "generating",
+          "ready",
+          "failed",
+          "outdated"
+        ]
+      }
+    },
+    "required": [
+      "report_id",
+      "revision",
+      "status"
+    ],
+    "additionalProperties": false
+  },
+  "ReportListItem": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "kind": {
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly"
+        ]
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "request": {
+        "$ref": "#/$defs/ReportGenerateInput"
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "status": {
+        "enum": [
+          "queued",
+          "generating",
+          "ready",
+          "failed",
+          "outdated"
+        ]
+      },
+      "outdated": {
+        "type": "boolean"
+      },
+      "coverage": {
+        "type": "object",
+        "properties": {
+          "valid_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expected_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "valid_days",
+          "expected_days",
+          "source_count"
+        ],
+        "additionalProperties": false
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "version",
+      "request",
+      "created_at",
+      "revision",
+      "status",
+      "outdated",
+      "coverage",
+      "error"
+    ],
+    "additionalProperties": false
+  },
+  "ReportDetail": {
+    "type": "object",
+    "properties": {
+      "user_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "identity_hash": {
+        "type": "string"
+      },
+      "kind": {
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly"
+        ]
+      },
+      "request": {
+        "$ref": "#/$defs/ReportGenerateInput"
+      },
+      "version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "created_at": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "report_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "revision": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "status": {
+        "enum": [
+          "queued",
+          "generating",
+          "ready",
+          "failed",
+          "outdated"
+        ]
+      },
+      "facts": {
+        "$ref": "https://life-dashboard.local/schemas/v0.3/report-facts.schema.json"
+      },
+      "narrative": {
+        "anyOf": [
+          {
+            "$ref": "https://life-dashboard.local/schemas/v0.3/report-narrative.schema.json"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "error": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "model": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "prompt_version": {
+        "type": "string"
+      },
+      "outdated": {
+        "type": "boolean"
+      },
+      "published_at": {
+        "anyOf": [
+          {
+            "type": "string",
+            "format": "date-time"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "job_id": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "cancel_requested": {
+        "type": "boolean"
+      },
+      "revisions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "status": {
+              "enum": [
+                "queued",
+                "generating",
+                "ready",
+                "failed",
+                "outdated"
+              ]
+            },
+            "outdated": {
+              "type": "boolean"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "revision",
+            "status",
+            "outdated",
+            "created_at"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "user_id",
+      "id",
+      "identity_hash",
+      "kind",
+      "request",
+      "version",
+      "created_at",
+      "report_id",
+      "revision",
+      "status",
+      "facts",
+      "narrative",
+      "error",
+      "model",
+      "prompt_version",
+      "outdated",
+      "published_at",
+      "job_id",
+      "cancel_requested",
+      "revisions"
+    ],
+    "additionalProperties": false
+  }
+}
