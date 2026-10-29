@@ -1,0 +1,143 @@
+{
+  "date": "2026-10-20",
+  "timezone": "Asia/Shanghai",
+  "implementation_revision": "0496660",
+  "frontend_delivery": "eda3dcd",
+  "integration": "6030a31",
+  "fixes": [
+    "ea18962",
+    "0496660"
+  ],
+  "executor": "Codex 代执行 DeepSeek 复验",
+  "independent_person_review": false,
+  "overall": "PASS",
+  "baseline": {
+    "typecheck": "PASS",
+    "unit": "26/26",
+    "integration": "63/63",
+    "web_suites": "18/18",
+    "web_assertions": 134,
+    "build": "PASS"
+  },
+  "api": {
+    "D01 auth origin and capability boundary": {
+      "status": "PASS"
+    },
+    "D02 empty home and read-only defaults": {
+      "status": "PASS"
+    },
+    "D03 concurrent replays payload mismatch and version race": {
+      "status": "PASS"
+    },
+    "D04 typed fields explicit removals and immutable derived data": {
+      "status": "PASS"
+    },
+    "D05 foreign references and archived module changes are rejected": {
+      "status": "PASS"
+    },
+    "D06 pin order limits replay minimal mode and invalidated references": {
+      "status": "PASS"
+    },
+    "D07 facts sources revisions and no profile side effects": {
+      "status": "PASS"
+    },
+    "D08 backup restore preserves old facts tombstones awards configs revisions and receipts": {
+      "status": "PASS"
+    }
+  },
+  "browser": {
+    "B01": {
+      "status": "PASS"
+    },
+    "B02": {
+      "status": "PASS"
+    },
+    "B03": {
+      "status": "PASS"
+    },
+    "B04": {
+      "status": "PASS"
+    },
+    "B05": {
+      "status": "PASS"
+    },
+    "B06": {
+      "status": "PASS"
+    },
+    "B07": {
+      "status": "PASS"
+    },
+    "B08": {
+      "status": "PASS"
+    },
+    "B09": {
+      "status": "PASS"
+    },
+    "B10": {
+      "status": "PASS"
+    },
+    "B11": {
+      "status": "PASS"
+    },
+    "B12": {
+      "status": "PASS"
+    },
+    "B13": {
+      "status": "PASS"
+    },
+    "B14": {
+      "status": "PASS"
+    },
+    "B15": {
+      "status": "PASS"
+    },
+    "B16": {
+      "status": "PASS"
+    },
+    "B17": {
+      "status": "PASS"
+    },
+    "B18": {
+      "status": "PASS"
+    },
+    "B19": {
+      "status": "PASS"
+    },
+    "B20": {
+      "status": "PASS"
+    }
+  },
+  "restart": {
+    "status": "PASS",
+    "profile_version": 2,
+    "preferences_version": 2,
+    "record_retained": true,
+    "minimal_ui": true
+  },
+  "browser_uncaught_errors": [],
+  "environment": {
+    "node": "v24.21.0",
+    "browser": "156.0.8078.4",
+    "postgres": "18.6 (Debian 18.6-1.pgdg12+2)",
+    "origin": "http://gateway",
+    "database_host": "postgres-test",
+    "database_name": "life_dashboard_test",
+    "locators": {
+      "ai": "#ld-home-ai-box",
+      "avatar": "#ld-home-avatar-slot",
+      "profile": "form:has([name=nickname])",
+      "minimal": "input[name=minimal_mode], [data-action=toggle-minimal-mode]"
+    },
+    "independent_author": false
+  },
+  "run": {
+    "status": "PASS",
+    "exit_code": 0,
+    "required_skips_allowed": false
+  },
+  "limits": [
+    "Synthetic isolated test database only; no real-user DB migration/restore or main-environment rollout.",
+    "360px Chromium viewport is not a physical phone.",
+    "No real AI, 3D resources, production deploy or independent-person review."
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "status": "PASS",
+  "exit_code": 0,
+  "project": "life-dashboard-v0-2-codex",
+  "core_skips_allowed": false,
+  "real_mobile_device": false,
+  "backend": {
+    "original_units": 26,
+    "original_integration": 63,
+    "phase2": 21,
+    "legacy_api_including_parent": 9,
+    "phase3": 10
+  },
+  "frontend": {
+    "render_suites": 18,
+    "render_assertions": 134,
+    "phase2_units": 4,
+    "new_periodic_units": 4
+  },
+  "browser": {
+    "legacy_scenarios": 20,
+    "phase2_steps": 15,
+    "new_regressions": 2,
+    "uncaught_errors": 0,
+    "restarts": [
+      "task_receipts_export_wallet",
+      "profile_preferences_records_minimal_ui"
+    ]
+  },
+  "same_pg_client_warning": false,
+  "images_deleted": 0,
+  "old_worktrees_archived": 2,
+  "old_containers_removed": 9,
+  "old_empty_networks_removed": 2,
+  "main_18080_upgraded": false,
+  "preview_export_tables_equal": true,
+  "baseline_sha": "d9ab4085c05ec121bfe2fd03cd6fac071741b530",
+  "implementation_commit": "3ea9b3a",
+  "frozen_checkout": {
+    "status": "PASS",
+    "sha": "13bff27950e57aa3253fe62a352cd1fed9395dec",
+    "browser": "156.0.8078.4",
+    "login_ui": true,
+    "record_ui": true,
+    "exact_replay": true,
+    "one_record_after_reload": true,
+    "viewport_360": true,
+    "real_device": false,
+    "uncaught_errors": []
+  },
+  "temporary_acceptance_containers_removed": 7,
+  "all_containers_removed": 16,
+  "temporary_frozen_checkout_archived": 1,
+  "all_empty_networks_removed": 3,
+  "origin_main_fetched_sha": "c91eee95f41cd3238a8619e75e4675bc9231b98e"
+}

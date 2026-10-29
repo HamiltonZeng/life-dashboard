@@ -1,0 +1,459 @@
+{
+  "environment": {
+    "node": "v24.22.0",
+    "platform": "linux",
+    "arch": "arm64"
+  },
+  "results": [
+    {
+      "records": 100,
+      "instances": 101,
+      "path": "task-templates",
+      "samples_ms": [
+        1.73,
+        1.6,
+        1.11
+      ],
+      "sql_queries": [
+        4,
+        4,
+        4
+      ]
+    },
+    {
+      "records": 100,
+      "instances": 101,
+      "path": "task-instances?limit=50&offset=0",
+      "samples_ms": [
+        7.25,
+        5.24,
+        5.27
+      ],
+      "sql_queries": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "records": 100,
+      "instances": 101,
+      "path": "home",
+      "samples_ms": [
+        13.34,
+        11.84,
+        11.79
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 100,
+      "instances": 101,
+      "path": "metrics/:id/trend?range=year&grain=1mo",
+      "samples_ms": [
+        35.75,
+        25.25,
+        21.61
+      ],
+      "sql_queries": [
+        5,
+        5,
+        5
+      ]
+    },
+    {
+      "records": 100,
+      "instances": 101,
+      "path": "POST records",
+      "samples_ms": [
+        18.09,
+        17.12,
+        16.33
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 100,
+      "instances": 365,
+      "path": "task-templates",
+      "samples_ms": [
+        1.82,
+        1.35,
+        1.79
+      ],
+      "sql_queries": [
+        4,
+        4,
+        4
+      ]
+    },
+    {
+      "records": 100,
+      "instances": 365,
+      "path": "task-instances?limit=50&offset=0",
+      "samples_ms": [
+        10.54,
+        10.37,
+        10.41
+      ],
+      "sql_queries": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "records": 100,
+      "instances": 365,
+      "path": "home",
+      "samples_ms": [
+        32.28,
+        27.17,
+        26.7
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 100,
+      "instances": 365,
+      "path": "metrics/:id/trend?range=year&grain=1mo",
+      "samples_ms": [
+        29.15,
+        30.35,
+        23.86
+      ],
+      "sql_queries": [
+        5,
+        5,
+        5
+      ]
+    },
+    {
+      "records": 100,
+      "instances": 365,
+      "path": "POST records",
+      "samples_ms": [
+        61.79,
+        59.06,
+        56.58
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 101,
+      "path": "task-templates",
+      "samples_ms": [
+        1.52,
+        1.2,
+        1.23
+      ],
+      "sql_queries": [
+        4,
+        4,
+        4
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 101,
+      "path": "task-instances?limit=50&offset=0",
+      "samples_ms": [
+        6.98,
+        7.02,
+        6.55
+      ],
+      "sql_queries": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 101,
+      "path": "home",
+      "samples_ms": [
+        21.64,
+        18.94,
+        18.84
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 101,
+      "path": "metrics/:id/trend?range=year&grain=1mo",
+      "samples_ms": [
+        41.77,
+        39.81,
+        34.81
+      ],
+      "sql_queries": [
+        5,
+        5,
+        5
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 101,
+      "path": "POST records",
+      "samples_ms": [
+        21.18,
+        16.64,
+        16.89
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 365,
+      "path": "task-templates",
+      "samples_ms": [
+        1.81,
+        1.03,
+        1.09
+      ],
+      "sql_queries": [
+        4,
+        4,
+        4
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 365,
+      "path": "task-instances?limit=50&offset=0",
+      "samples_ms": [
+        10.5,
+        9.29,
+        10.51
+      ],
+      "sql_queries": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 365,
+      "path": "home",
+      "samples_ms": [
+        44.51,
+        41.75,
+        35.49
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 365,
+      "path": "metrics/:id/trend?range=year&grain=1mo",
+      "samples_ms": [
+        44.14,
+        53.42,
+        31.57
+      ],
+      "sql_queries": [
+        5,
+        5,
+        5
+      ]
+    },
+    {
+      "records": 1000,
+      "instances": 365,
+      "path": "POST records",
+      "samples_ms": [
+        64.44,
+        80.16,
+        69.98
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 101,
+      "path": "task-templates",
+      "samples_ms": [
+        1.47,
+        0.89,
+        0.79
+      ],
+      "sql_queries": [
+        4,
+        4,
+        4
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 101,
+      "path": "task-instances?limit=50&offset=0",
+      "samples_ms": [
+        5.69,
+        5.91,
+        5.47
+      ],
+      "sql_queries": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 101,
+      "path": "home",
+      "samples_ms": [
+        127.61,
+        99.5,
+        124.14
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 101,
+      "path": "metrics/:id/trend?range=year&grain=1mo",
+      "samples_ms": [
+        225.81,
+        150.33,
+        161.5
+      ],
+      "sql_queries": [
+        5,
+        5,
+        5
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 101,
+      "path": "POST records",
+      "samples_ms": [
+        43.58,
+        42.18,
+        41.33
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 365,
+      "path": "task-templates",
+      "samples_ms": [
+        1.26,
+        0.76,
+        0.85
+      ],
+      "sql_queries": [
+        4,
+        4,
+        4
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 365,
+      "path": "task-instances?limit=50&offset=0",
+      "samples_ms": [
+        8.55,
+        8.66,
+        8.5
+      ],
+      "sql_queries": [
+        9,
+        9,
+        9
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 365,
+      "path": "home",
+      "samples_ms": [
+        123.19,
+        117.38,
+        125.92
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 365,
+      "path": "metrics/:id/trend?range=year&grain=1mo",
+      "samples_ms": [
+        152.06,
+        141.25,
+        144.28
+      ],
+      "sql_queries": [
+        5,
+        5,
+        5
+      ]
+    },
+    {
+      "records": 10000,
+      "instances": 365,
+      "path": "POST records",
+      "samples_ms": [
+        88.31,
+        83.85,
+        84.21
+      ],
+      "sql_queries": [
+        24,
+        24,
+        24
+      ]
+    }
+  ]
+}

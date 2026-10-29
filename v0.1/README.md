@@ -1,116 +1,120 @@
-# 人生面板 v0.1：本机手动记录 MVP
+# 人生面板 · Life Dashboard
 
-本机 Docker 运行的单用户网站。首页保持空白，通过任务、数值、成就、记录、设置五个面板使用；默认包含学习与发展、饮食与锻炼、财富与收获、娱乐和交际四个模块，也可手动建立自定义模块。
+一个带有游戏面板风格的个人生活记录工具。通过任务、记录、数值和成就，把“计划做什么”和“实际做了什么”连接起来。
 
-本版保留手动配置、通用记录、关联任务、可追溯统计与成就、浏览器草稿、冲突处理和人工导出/恢复。AI、报告、同步、PWA 离线、周期调度及专业账本不作为发布功能。完整范围见 [发布说明](RELEASE_NOTES.md)、[延期清单](docs/DEFERRED_FEATURES.md)。
+**v0.1.0 是本机 Docker、单用户、手动五面板 MVP。** 数据存储在本机 PostgreSQL；AI、跨设备同步和专业健康/财务能力尚未发布。
 
-## 启动、停止与登录
+## 本版可以做什么
 
-宿主机需已启动的 Docker Desktop、shell 和 Git；无需宿主 Node/pnpm/PostgreSQL。首次运行需联网拉取固定镜像和依赖。
+| 面板 | 主要能力 |
+| --- | --- |
+| 任务 | 创建任务，设置手动完成或记录验收规则，从任务直接进入对应记录 |
+| 记录 | 按模板填写实际行为，保存服务器草稿或确认记录，编辑与软删除，追踪关联任务 |
+| 数值 | 从已确认记录计算次数、合计、平均值和最近值，查看来源与统计周期 |
+| 成就 | 配置数值门槛，查看解锁依据；依据变化后保留历史并标记待复核 |
+| 设置 | 管理默认/自定义模块、通用模板、显示偏好、本地会话，下载数据导出 |
+
+默认模块为**学习与发展、饮食与锻炼、财富与收获、娱乐和交际**，也可以创建新模块。首页目前按设计保持空白，通过导航进入五面板。
+
+例如，为学习记录建立“分钟数”字段，设置一次不少于 10 分钟的任务，并创建累计分钟数和成就规则：记录 5 分钟会显示未达门槛，修改为 10 分钟后更新任务和统计；一条记录关联多个任务时不会重复计入数值。
+
+## 数据可靠性
+
+- 浏览器本机草稿与服务器已保存数据分别呈现；浏览器存储失败时明确提示，不假报保存成功。
+- 记录请求发出前保存待确认操作。丢失回执或刷新后，沿用原操作 ID 和完整载荷确认，避免重复记录。
+- 未知结果期间继续编辑会保留独立工作草稿；先确认原提交，再显式修改同一条记录。
+- 编辑采用版本检查；冲突保留输入，采用新基线需要明确操作。
+- 缺失数值与真实零值分开。任务和成就均可追溯原始记录，编辑/删除证据后重新评估。
+- 支持人工 JSON 导出和 CLI 空库恢复；保留记录修订、软删除墓碑、成就依据和幂等回执。
+
+这些保证主要覆盖记录创建/编辑。配置类创建的异常恢复及自定义字段的保留名称仍有边界，详见[本轮代码检查报告](v0.1/docs/CODE_REVIEW_2026-10-19.md)。
+
+## 快速启动
+
+需要已启动的 Docker 环境和 shell。Node、pnpm 与 PostgreSQL 均由容器运行。
 
 ```sh
-cd /Users/zhk/life_dashboard/v0.1
+cd life-dashboard/v0.1
 sh scripts/start.sh
 ```
 
-入口：[http://localhost:18080](http://localhost:18080)，只绑定本机回环地址；数据库不映射宿主端口。健康检查 `/health/ready`。电脑休眠或 Docker 停止时不能提交服务器记录。
+打开 **http://localhost:18080**。首次启动会生成本地随机登录口令和数据库配置，保存在 `v0.1/.secrets/development.env`。仅在本机查看其中的 `LOCAL_LOGIN_SECRET` 用于登录，不提交该文件。
 
-首次启动自动生成 `.secrets/development.env`，目录权限 700、文件 600；重复启动不覆盖。用编辑器打开该本地文件，将 `LOCAL_LOGIN_SECRET` 的值输入登录页；不要放进源码、截图或日志。会话 Cookie 为 HttpOnly、SameSite=Strict，7 天有效；设置 → 账户与数据可退出。
+停止与继续：
 
 ```sh
-# 停止服务（保留数据）
 docker compose stop
-# 继续使用（默认 mvp 发布模式）
 docker compose up -d --wait api web gateway
 ```
 
-`APP_PROFILE` 默认 `mvp`，非法值拒绝 API 启动。发布模式 AI 能力为 false，直接访问 AI 写 API 也返回 `409 FEATURE_DISABLED`；不会创建生成任务或调用模型。遗留错误模型配置不会阻断手动记录，已有 AI 来源定义与历史数据不删除。
+实际目录名不同时，替换示例中的 `life-dashboard`。详细安装、配置和人工恢复步骤见 [v0.1 使用说明](v0.1/README.md)。
 
-仅开发者回归旧 AI/mock 时显式切换：
+## 发布与开发模式
 
-```sh
-APP_PROFILE=development docker compose up -d --force-recreate api web
-# 恢复发布模式
-APP_PROFILE=mvp docker compose up -d --force-recreate api web
-```
+默认 `APP_PROFILE=mvp`：发布手动流程，AI 能力关闭，服务端拒绝 AI 操作。已有 AI 生成定义和历史数据继续保留。
 
-开发模式默认 mock，不需要真实模型密钥；真实模型没有作为本版验收条件。冻结语义见 [MVP 契约](docs/MVP_CONTRACT.md)。
+`APP_PROFILE=development` 保留 AI 蓝图开发路径，默认使用**不联网的确定性 mock**。DeepSeek 适配器、结构化蓝图校验、预览/应用和批次撤销已经有代码及测试；真实模型效果、费用和生产运行尚未验收。
 
-## 如何记录与理解状态
+不要把 mock 成功理解成真实模型已接入，也不要通过开放本机端口直接把当前开发入口作为公网服务。
 
-从任务“去记录”会带上模块、模板和任务关联，实际时长等由用户填写；也可以直接记录。单条 5 分钟不足 10 分钟门槛时真实保存、任务部分完成；改为 10 后重算。一条记录关联多个任务只统计一次。没有观测显示“暂无数据”，真实的 0 保留为 0；草稿记录不参与统计。
+## 技术实现
 
-- **已保存本机**：当前浏览器的草稿，刷新后可恢复；尚未代表服务器收到。浏览器清理站点数据可能丢失它。
-- **等待确认／结果未知**：完整操作在发请求前保存到当前浏览器。刷新后选择继续草稿，再“确认上次提交”，沿用原键和冻结载荷确认；不要另外创建一条。
-- **未知后修改输入**：先确认原提交，修改仍保留为草稿；随后明确保存到同一条记录，不会自动另建事实。
-- **未保存本机**：存储被阻止、满额或内容损坏。输入保留在当前页面，提供“复制输入”；可靠提交路径不会绕过持久化就发送。
-- **冲突待处理**：本地输入和原编辑版本保留。先拉取最新值核对；只有点击“采用此版本作为编辑基线”后，才可按新版本提交。普通刷新不授予覆盖权限。
-- **服务器已确认**：回执已经验证；后续列表刷新失败不改判写入失败，也不要求重新建记录。
+| 层 | 当前实现 |
+| --- | --- |
+| Web | 原生 TypeScript、HTML/UI 函数、TypeScript compiler API 构建 |
+| API | Fastify、Zod、独立 `/api/v1` 接口 |
+| 数据库 | PostgreSQL 18、pg、参数化 SQL、带校验和的编号迁移 |
+| 规则 | Decimal.js 精确数值、Luxon 时区窗口 |
+| 运行 | Docker Compose、Node 24、pnpm、Caddy 同源入口 |
+| 验证 | Node 测试、隔离 PostgreSQL、Web 逻辑套件、Playwright/Chromium 发布验收 |
 
-软删除或修改唯一证据会重算任务/数值，并保留成就历史与“需复核”依据。已取消/跳过的任务不能重新完成。模板字段 key、类型与单位破坏性变更尚无迁移入口。
+当前没有迁移为 React/Vite，Drizzle 只在有限路径使用。API 和数据库独立，便于后续客户端复用；尚不代表 App 或同步已完成。
 
-健康、财富目前是通用随记，不提供营养算法、训练处方或财务账本。手机宽度布局可用，但本版承诺限于本机浏览器，不包含手机可信 HTTPS、真正离线或跨设备恢复。
+## 验证
 
-## 人工导出与恢复
-
-设置 → 账户与数据 → **导出数据** 下载 JSON；也可在容器内执行：
+在 `v0.1` 内执行：
 
 ```sh
-docker compose run --rm --no-deps tools corepack pnpm export:data
+sh scripts/verify-backend.sh
+docker compose run --rm --no-deps -e AI_PROVIDER=mock tools corepack pnpm verify:web
 ```
 
-默认文件位于 `.runtime/backups/`，CLI 创建/覆盖后权限为 600。导出的是服务器已落库数据：定义、记录（包含服务器草稿及软删除墓碑）、修订、成就依据、变更日志与幂等回执。它不包含浏览器草稿/未确认操作包、登录会话/凭据、AI 生成任务/批次审计。已经服务器提交但浏览器尚待确认的记录仍属于服务器数据。
-
-备份含个人内容，请自行保管并另外存一份异机副本；同盘目录不能防设备损坏。SHA-256 只检查完整性，不是加密或防对抗签名。
-
-恢复要求目标库为空、迁移清单完全一致；单事务校验/写入，失败回滚。下面只创建并恢复一个新库，不覆盖当前开发库：
-
-```sh
-docker compose exec postgres createdb -U life_dashboard life_dashboard_restore
-docker compose run --rm --no-deps -e DATABASE_NAME=life_dashboard_restore tools corepack pnpm db:migrate
-docker compose run --rm --no-deps -e DATABASE_NAME=life_dashboard_restore tools corepack pnpm restore:data --file .runtime/backups/你的备份.json
-```
-
-不要在恢复前对目标执行 seed。默认拒绝恢复到 `life_dashboard`；即使显式 `--allow-development` 也必须为空，不能合并或覆盖现有数据。恢复后不恢复登录态，需要重新登录。
-
-若要用恢复库启动网站，创建自己的本地 Compose 覆盖文件，将 `services.api.environment.DATABASE_NAME` 指定为 `life_dashboard_restore`，再显式与 `compose.yaml` 一起启动；原库保留。恢复不是页面操作或同步协议。示例：
-
-```yaml
-# .runtime/restore.override.yaml
-services:
-  api:
-    environment:
-      DATABASE_NAME: life_dashboard_restore
-```
-
-```sh
-docker compose -f compose.yaml -f .runtime/restore.override.yaml up -d --force-recreate api
-```
-
-## 一条命令发布验收
+完整发布验收：
 
 ```sh
 sh scripts/release/verify-mvp.sh
 ```
 
-该命令执行类型/单元、旧 development/mock 集成、Web 套件、构建/契约/审计，再在独立 Compose 项目运行真实 Chromium → 同源网关 → API → PostgreSQL 的 A01–A16。包含丢回执/刷新、改值、损坏成功回执、存储失败、双页面冲突、真实导出/空库恢复与应用重启。浏览器缺失会失败，必测项无 SKIP 放行。
+完整验收会创建独立 Compose 测试项目，运行真实浏览器与隔离数据库闭环、导出/恢复及应用重启检查。测试产物位于当前版本 `.runtime/test-artifacts/`，不纳入 Git。
 
-测试使用假口令、独立网络和临时 PostgreSQL，无外部发布端口；退出后移除隔离项目。结果在 `.runtime/test-artifacts/stage3-final/`，`run.json` 为本轮状态，`acceptance.json` 为逐项矩阵，另有日志、环境信息和桌面/360px 截图。360px 是容器 Chromium 视口模拟，没有手机实机/软键盘验收，也没有声称 CI。
+本轮重跑：类型检查、**26 项单元测试、53 项数据库集成测试、12 套 Web 测试（73 条断言）**、构建与契约导出通过，生产依赖审计未报告已知漏洞。完整 A01–A16 浏览器发布验收来自现有 v0.1 完成日志，本轮未重复执行；详见[检查范围与证据](v0.1/docs/CODE_REVIEW_2026-10-19.md)。
 
-浏览器库和官方镜像固定版本/摘要。浏览器可执行文件属于固定测试镜像、由 Docker Engine 保存；用户档案、下载和测试产物在当前版本目录，不读取宿主浏览器或真实登录口令。
+## 待开放功能
 
-## 目录与技术边界
-
-`apps/web` 为原生 TypeScript/HTML UI，`build-web.mjs` 用 TypeScript compiler API；当前没有迁移 React/Vite。Fastify + Zod API、PostgreSQL 18、参数化 SQL/编号迁移、Decimal.js/Luxon 规则保留；Drizzle 使用有限。参考 [ADR 0001](docs/adr/0001-current-implementation.md)、[ADR 0002](docs/adr/0002-minimal-export-restore.md)。
-
-| 路径 | 含义 |
+| 能力 | 实际代码状态 |
 | --- | --- |
-| `.runtime/data/postgres` | 用户持久数据库；不要当缓存删除 |
-| `.runtime/data/uploads` | 附件预留，当前无上传功能 |
-| `.runtime/backups` | 人工备份文件，含个人数据 |
-| `.runtime/cache`、`.runtime/tmp` | 项目可控缓存和临时文件 |
-| `.runtime/test-artifacts` | 隔离验收产物，仅测试夹具 |
-| `.secrets` | 服务端本地口令与配置 |
-| 根目录 `log/` | 开发日志和最终验收记录 |
+| AI 模块配置 | 已实现受限蓝图闭环和 mock 测试，MVP 默认关闭；真实模型未验收 |
+| 日报/周报与 RAG | 有设计与部分旧视图，没有报告服务或向量检索实现 |
+| 多端同步、设备与 PWA | 有变更日志、版本和幂等基础，没有完整同步协议/离线应用 |
+| 周期任务 | 有模板和实例基础，daily/weekly 调度未实现 |
+| 营养、训练与财富账本 | 通用记录可用，专业数据模型和算法未实现 |
+| 新主页、App 与桌面应用 | 方案或接口基础保留，未开发产品功能 |
 
-密钥、数据、备份、缓存、node_modules、dist 均不纳入 Git。Docker 镜像/BuildKit/容器标准输出由 Engine 管理；浏览器存储由当前设备和 Origin 管理。不要清空整棵 `.runtime`。当前是小规模个人 MVP，全量快照/逐行恢复尚未针对大数据量优化。
+详见[延期功能与重新启用条件](v0.1/docs/DEFERRED_FEATURES.md)及[代码完成情况核对](v0.1/docs/CODE_REVIEW_2026-10-19.md)。
+
+## 目录与数据边界
+
+```text
+v0.1/
+  apps/          Web 与 API
+  packages/      contracts / domain / db / ai / ui
+  tests/         领域、接口、可靠性与发布验收
+  scripts/       启动、构建、迁移、导出恢复与验证
+  docs/          契约、架构决策、延期功能与检查报告
+design/          产品设计与历史开发计划
+log/             开发与验收日志
+```
+
+`.secrets`、`.runtime`、数据库、备份、依赖和构建产物均被忽略。**`.runtime/data` 是持久数据，不能当普通缓存删除。** 浏览器草稿不在服务器导出中；导出也不包含会话和 AI 生成审计。备份校验和不等于加密，没有自动异机备份。
+
+本版仅面向小规模本机个人使用。360px 布局经过已有 Chromium 视口验收，尚无手机实机、软键盘、可信手机 HTTPS、真正离线或多端同步验收。

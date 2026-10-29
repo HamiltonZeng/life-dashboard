@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "sha": "13bff27950e57aa3253fe62a352cd1fed9395dec",
+  "browser": "156.0.8078.4",
+  "login_ui": true,
+  "record_ui": true,
+  "exact_replay": true,
+  "one_record_after_reload": true,
+  "viewport_360": true,
+  "real_device": false,
+  "uncaught_errors": []
+}
