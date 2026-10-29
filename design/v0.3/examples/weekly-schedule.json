@@ -1,0 +1,15 @@
+{
+  "base_version": 1,
+  "enabled": true,
+  "local_time": "08:00",
+  "timezone": "Asia/Shanghai",
+  "coverage": "previous_complete",
+  "weekday": 1,
+  "month_day": null,
+  "short_month_policy": "last_day",
+  "catch_up": "latest_only",
+  "module_ids": [
+    "90000000-0000-4000-8000-000000000001"
+  ],
+  "preview_token": "synthetic-preview-token-not-valid"
+}

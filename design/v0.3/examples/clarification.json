@@ -1,0 +1,15 @@
+{
+  "schema_version": "ai-decision/1.0",
+  "context_ref": "90000000-0000-4000-8000-000000000002",
+  "intent": "clarify",
+  "summary": "已识别跑步记录意图，尚缺实际时长。",
+  "assumptions": [],
+  "clarification": {
+    "question": "这次跑步实际用了多少分钟？",
+    "choices": [],
+    "blocking_fields": [
+      "duration_minutes"
+    ]
+  },
+  "actions": []
+}

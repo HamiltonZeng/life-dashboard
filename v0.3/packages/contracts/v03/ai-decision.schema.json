@@ -1,0 +1,1807 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://life-dashboard.local/schemas/v0.3/ai-decision.schema.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "ai-decision/1.0"
+    },
+    "context_ref": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "answer",
+        "plan",
+        "record",
+        "adjust",
+        "report",
+        "schedule",
+        "clarify"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposed_target",
+              "configuration_default",
+              "authorized_preference"
+            ]
+          }
+        },
+        "required": [
+          "text",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 20
+    },
+    "clarification": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "choices": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "minItems": 0,
+              "maxItems": 6
+            },
+            "blocking_fields": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            }
+          },
+          "required": [
+            "question",
+            "choices",
+            "blocking_fields"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Action"
+      },
+      "minItems": 0,
+      "maxItems": 20
+    }
+  },
+  "required": [
+    "schema_version",
+    "context_ref",
+    "intent",
+    "summary",
+    "assumptions",
+    "clarification",
+    "actions"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "Scalar": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 20000
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "EntityRef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "existing"
+            },
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "local"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            }
+          },
+          "required": [
+            "kind",
+            "local_ref"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Field": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "textarea",
+            "integer",
+            "decimal",
+            "date",
+            "boolean",
+            "single_select"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 30
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "minItems": 0,
+          "maxItems": 30
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "label",
+        "type",
+        "required",
+        "unit",
+        "options",
+        "minimum",
+        "maximum"
+      ],
+      "additionalProperties": false
+    },
+    "Filter": {
+      "type": "object",
+      "properties": {
+        "field_key": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "operator": {
+          "type": "string",
+          "enum": [
+            "eq",
+            "gte",
+            "lte"
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/Scalar"
+        }
+      },
+      "required": [
+        "field_key",
+        "operator",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "TaskRule": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "linked_exists"
+            },
+            "record_type_ref": {
+              "$ref": "#/$defs/EntityRef"
+            }
+          },
+          "required": [
+            "kind",
+            "record_type_ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "linked_field_gte"
+            },
+            "record_type_ref": {
+              "$ref": "#/$defs/EntityRef"
+            },
+            "field_key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "threshold": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+            }
+          },
+          "required": [
+            "kind",
+            "record_type_ref",
+            "field_key",
+            "threshold"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "count",
+                "distinct_days"
+              ]
+            },
+            "record_type_ref": {
+              "$ref": "#/$defs/EntityRef"
+            },
+            "threshold": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+            },
+            "filters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Filter"
+              },
+              "minItems": 0,
+              "maxItems": 5
+            }
+          },
+          "required": [
+            "kind",
+            "record_type_ref",
+            "threshold",
+            "filters"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "sum"
+            },
+            "record_type_ref": {
+              "$ref": "#/$defs/EntityRef"
+            },
+            "field_key": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "unit": {
+              "type": "string",
+              "maxLength": 30
+            },
+            "threshold": {
+              "type": "string",
+              "pattern": "^-?(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+            },
+            "filters": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Filter"
+              },
+              "minItems": 0,
+              "maxItems": 5
+            }
+          },
+          "required": [
+            "kind",
+            "record_type_ref",
+            "field_key",
+            "unit",
+            "threshold",
+            "filters"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Schedule": {
+      "type": "object",
+      "properties": {
+        "active_from": {
+          "type": "string",
+          "format": "date"
+        },
+        "active_until": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "weekdays": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 7
+              },
+              "minItems": 1,
+              "maxItems": 7,
+              "uniqueItems": true
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "preferred_local_time": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "active_from",
+        "active_until",
+        "weekdays",
+        "preferred_local_time"
+      ],
+      "additionalProperties": false
+    },
+    "Provenance": {
+      "type": "object",
+      "properties": {
+        "field_key": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "source_type": {
+          "type": "string",
+          "enum": [
+            "user_statement",
+            "authorized_context",
+            "unit_conversion"
+          ]
+        },
+        "evidence_ref": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "quote": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "original_value": {
+          "$ref": "#/$defs/Scalar"
+        },
+        "original_unit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 30
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "field_key",
+        "source_type",
+        "evidence_ref",
+        "quote",
+        "original_value",
+        "original_unit"
+      ],
+      "additionalProperties": false
+    },
+    "Estimate": {
+      "type": "object",
+      "properties": {
+        "field_key": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+        },
+        "unit": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "method": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "uncertainty": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "minItems": 1,
+          "maxItems": 10
+        }
+      },
+      "required": [
+        "field_key",
+        "value",
+        "unit",
+        "method",
+        "uncertainty",
+        "evidence_refs"
+      ],
+      "additionalProperties": false
+    },
+    "Values": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Scalar"
+      },
+      "maxProperties": 30
+    },
+    "Action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "goal.create"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "module_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                "start_date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "target_date": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "success_criteria": {
+                  "type": "string",
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "module_ref",
+                "title",
+                "description",
+                "start_date",
+                "target_date",
+                "success_criteria"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "module.create"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "description": {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                "icon": {
+                  "type": "string",
+                  "enum": [
+                    "book",
+                    "dumbbell",
+                    "wallet",
+                    "sparkles",
+                    "trophy",
+                    "flag",
+                    "leaf",
+                    "music",
+                    "chat",
+                    "star"
+                  ]
+                },
+                "color": {
+                  "type": "string",
+                  "enum": [
+                    "blue",
+                    "green",
+                    "amber",
+                    "violet",
+                    "rose",
+                    "cyan",
+                    "slate"
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "description",
+                "icon",
+                "color"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "record_type.create"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "module_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/Field"
+                  },
+                  "minItems": 1,
+                  "maxItems": 30
+                }
+              },
+              "required": [
+                "module_ref",
+                "name",
+                "fields"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "metric.create"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "module_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "record_type_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "unit": {
+                  "type": "string",
+                  "maxLength": 30
+                },
+                "aggregation": {
+                  "type": "string",
+                  "enum": [
+                    "count",
+                    "sum",
+                    "avg",
+                    "latest"
+                  ]
+                },
+                "field_key": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "window": {
+                  "type": "string",
+                  "enum": [
+                    "day",
+                    "week",
+                    "month",
+                    "all_time"
+                  ]
+                },
+                "timezone": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "display_precision": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 6
+                }
+              },
+              "required": [
+                "module_ref",
+                "record_type_ref",
+                "name",
+                "unit",
+                "aggregation",
+                "field_key",
+                "window",
+                "timezone",
+                "display_precision"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "task_template.create"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "module_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "goal_ref": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/EntityRef"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "main",
+                    "daily",
+                    "weekly",
+                    "monthly"
+                  ]
+                },
+                "timezone": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "completion_mode": {
+                  "type": "string",
+                  "enum": [
+                    "manual",
+                    "record_optional",
+                    "record_required"
+                  ]
+                },
+                "rule": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/TaskRule"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "color": {
+                  "type": "string",
+                  "maxLength": 30
+                },
+                "schedule": {
+                  "$ref": "#/$defs/Schedule"
+                },
+                "due_at": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "module_ref",
+                "goal_ref",
+                "title",
+                "category",
+                "timezone",
+                "completion_mode",
+                "rule",
+                "color",
+                "schedule",
+                "due_at"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "task_template.change"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "template_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "changes": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "maxLength": 100
+                    },
+                    "timezone": {
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "completion_mode": {
+                      "type": "string",
+                      "enum": [
+                        "manual",
+                        "record_optional",
+                        "record_required"
+                      ]
+                    },
+                    "rule": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/TaskRule"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "color": {
+                      "type": "string",
+                      "maxLength": 30
+                    },
+                    "schedule": {
+                      "$ref": "#/$defs/Schedule"
+                    },
+                    "effective_from": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": false,
+                  "minProperties": 1
+                }
+              },
+              "required": [
+                "template_ref",
+                "changes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "achievement_series.create"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "module_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "goal_ref": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/EntityRef"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "record_type_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "aggregation": {
+                  "type": "string",
+                  "enum": [
+                    "count",
+                    "distinct_days",
+                    "sum"
+                  ]
+                },
+                "field_key": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "unit": {
+                  "type": "string",
+                  "maxLength": 30
+                },
+                "timezone": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "filters": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/Filter"
+                  },
+                  "minItems": 0,
+                  "maxItems": 5
+                },
+                "history_policy": {
+                  "type": "string",
+                  "enum": [
+                    "include_existing",
+                    "from_activation"
+                  ]
+                },
+                "milestones": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "local_ref": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                      },
+                      "threshold": {
+                        "type": "string",
+                        "pattern": "^-?(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+                      },
+                      "label": {
+                        "type": "string",
+                        "maxLength": 80
+                      }
+                    },
+                    "required": [
+                      "local_ref",
+                      "threshold",
+                      "label"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1,
+                  "maxItems": 20
+                }
+              },
+              "required": [
+                "module_ref",
+                "goal_ref",
+                "name",
+                "record_type_ref",
+                "aggregation",
+                "field_key",
+                "unit",
+                "timezone",
+                "filters",
+                "history_policy",
+                "milestones"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "record.create"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "module_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "record_type_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "occurred_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "timezone": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "values": {
+                  "$ref": "#/$defs/Values"
+                },
+                "task_refs": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/EntityRef"
+                  },
+                  "minItems": 0,
+                  "maxItems": 20
+                },
+                "provenance": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/Provenance"
+                  },
+                  "minItems": 0,
+                  "maxItems": 30
+                },
+                "estimated_values": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/Estimate"
+                  },
+                  "minItems": 0,
+                  "maxItems": 30
+                },
+                "time_precision": {
+                  "type": "string",
+                  "enum": [
+                    "instant",
+                    "day",
+                    "approximate"
+                  ]
+                },
+                "time_basis": {
+                  "type": "string",
+                  "enum": [
+                    "explicit_datetime",
+                    "explicit_date",
+                    "relative_date",
+                    "received_time",
+                    "authorized_context"
+                  ]
+                }
+              },
+              "required": [
+                "module_ref",
+                "record_type_ref",
+                "occurred_at",
+                "timezone",
+                "values",
+                "task_refs",
+                "provenance",
+                "estimated_values",
+                "time_precision",
+                "time_basis"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "record.correct"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "record_ref": {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                "values_patch": {
+                  "$ref": "#/$defs/Values"
+                },
+                "occurred_at": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timezone": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "provenance": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/Provenance"
+                  },
+                  "minItems": 0,
+                  "maxItems": 30
+                },
+                "time_precision": {
+                  "type": "string",
+                  "enum": [
+                    "instant",
+                    "day",
+                    "approximate"
+                  ]
+                },
+                "time_basis": {
+                  "type": "string",
+                  "enum": [
+                    "explicit_datetime",
+                    "explicit_date",
+                    "relative_date",
+                    "received_time",
+                    "authorized_context"
+                  ]
+                }
+              },
+              "required": [
+                "record_ref",
+                "values_patch",
+                "occurred_at",
+                "timezone",
+                "provenance"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "profile.patch"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "updates": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "field_ref": {
+                        "$ref": "#/$defs/EntityRef"
+                      },
+                      "value": {
+                        "$ref": "#/$defs/Scalar"
+                      },
+                      "evidence_ref": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "occurred_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "time_precision": {
+                        "type": "string",
+                        "enum": [
+                          "instant",
+                          "day",
+                          "approximate"
+                        ]
+                      },
+                      "time_basis": {
+                        "type": "string",
+                        "enum": [
+                          "explicit_datetime",
+                          "explicit_date",
+                          "relative_date",
+                          "received_time",
+                          "authorized_context"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "field_ref",
+                      "value",
+                      "evidence_ref"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1,
+                  "maxItems": 30
+                }
+              },
+              "required": [
+                "updates"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "report.generate"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "daily",
+                    "weekly",
+                    "monthly"
+                  ]
+                },
+                "period": {
+                  "type": "string",
+                  "enum": [
+                    "current",
+                    "previous",
+                    "custom"
+                  ]
+                },
+                "start_date": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "end_date": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timezone": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "module_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "minItems": 0,
+                  "maxItems": 10
+                }
+              },
+              "required": [
+                "kind",
+                "period",
+                "start_date",
+                "end_date",
+                "timezone",
+                "module_ids"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "const": "report_schedule.change"
+            },
+            "local_ref": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+            },
+            "depends_on": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "maxItems": 20,
+              "uniqueItems": true
+            },
+            "evidence_refs": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "minItems": 1,
+              "maxItems": 30
+            },
+            "data": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "daily",
+                    "weekly",
+                    "monthly"
+                  ]
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "local_time": {
+                  "type": "string",
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                },
+                "timezone": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "coverage": {
+                  "type": "string",
+                  "enum": [
+                    "previous_complete",
+                    "current_to_run"
+                  ]
+                },
+                "weekday": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 7
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "month_day": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 31
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "short_month_policy": {
+                  "const": "last_day"
+                },
+                "catch_up": {
+                  "type": "string",
+                  "enum": [
+                    "latest_only",
+                    "skip"
+                  ]
+                },
+                "module_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "minItems": 0,
+                  "maxItems": 10
+                }
+              },
+              "required": [
+                "kind",
+                "enabled",
+                "local_time",
+                "timezone",
+                "coverage",
+                "weekday",
+                "month_day",
+                "short_month_policy",
+                "catch_up",
+                "module_ids"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "action_type",
+            "local_ref",
+            "depends_on",
+            "evidence_refs",
+            "data"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

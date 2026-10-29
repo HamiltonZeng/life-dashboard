@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://life-dashboard.local/schemas/v0.3/report-facts.schema.json",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "report-facts/1.0"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "report_identity": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly"
+      ]
+    },
+    "period_key": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "timezone": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "start_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cutoff_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "partial": {
+      "type": "boolean"
+    },
+    "snapshot_cursor": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "module_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "minItems": 0,
+      "maxItems": 10
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fact_id": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "calculation": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^-?(0|[1-9]\\d{0,11})(\\.\\d{1,6})?$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "maxLength": 30
+          },
+          "data_source": {
+            "type": "string",
+            "enum": [
+              "user_reported",
+              "deterministic_derived",
+              "estimated"
+            ]
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "valid_days": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expected_days": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "source_count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "valid_days",
+              "expected_days",
+              "source_count"
+            ],
+            "additionalProperties": false
+          },
+          "previous_fact_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entity_type": {
+                  "type": "string",
+                  "enum": [
+                    "record",
+                    "task_instance",
+                    "milestone_award",
+                    "wallet_entry"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "entity_type",
+                "id",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 10000
+          }
+        },
+        "required": [
+          "fact_id",
+          "label",
+          "calculation",
+          "value",
+          "unit",
+          "data_source",
+          "coverage",
+          "previous_fact_id",
+          "source_refs"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 100
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "valid_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "valid_days",
+        "expected_days",
+        "source_count"
+      ],
+      "additionalProperties": false
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 1000
+      },
+      "minItems": 0,
+      "maxItems": 30
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "report_identity",
+    "kind",
+    "period_key",
+    "timezone",
+    "start_at",
+    "end_at",
+    "cutoff_at",
+    "partial",
+    "snapshot_cursor",
+    "module_ids",
+    "facts",
+    "coverage",
+    "warnings",
+    "content_hash"
+  ],
+  "additionalProperties": false
+}

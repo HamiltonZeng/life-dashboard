@@ -1,0 +1,80 @@
+name: life-dashboard-v0-3-release
+x-app: &app
+  image: node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+  working_dir: /workspace
+  init: true
+  volumes: [".:/workspace"]
+  environment: &env
+    APP_PROFILE: mvp
+    AI_PROVIDER: mock
+    NODE_ENV: test
+    RELEASE_TEST: '1'
+    DATABASE_HOST: postgres
+    DATABASE_USER: life_dashboard
+    DATABASE_NAME: life_dashboard_v03_release_test
+    POSTGRES_PASSWORD: isolated-release-only
+    LOCAL_LOGIN_SECRET: isolated-release-login-secret-never-a-real-credential
+    APP_ORIGIN: http://gateway
+    PORT: 3001
+    TMPDIR: /workspace/.runtime/test-artifacts/stage3-final/tmp
+    XDG_CACHE_HOME: /workspace/.runtime/cache
+    npm_config_cache: /workspace/.runtime/cache/npm
+    COREPACK_HOME: /workspace/.runtime/cache/corepack
+  tmpfs: [/tmp]
+services:
+  postgres:
+    image: postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+    environment:
+      POSTGRES_USER: life_dashboard
+      POSTGRES_DB: life_dashboard_v03_release_test
+      POSTGRES_PASSWORD: isolated-release-only
+    tmpfs: [/var/lib/postgresql]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U life_dashboard -d life_dashboard_v03_release_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  init:
+    <<: *app
+    command: [sh, -c, "node_modules/.bin/tsx packages/db/src/migrate.ts && node_modules/.bin/tsx packages/db/src/seed.ts"]
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *app
+    command: [node_modules/.bin/tsx, apps/api/src/main.ts]
+    depends_on:
+      postgres: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  web:
+    <<: *app
+    command: [node, apps/web/dev-server.mjs]
+    environment:
+      <<: *env
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 5173
+      API_PROXY_TARGET: http://api:3001
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  gateway:
+    image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    volumes: ["./infra/gateway/Caddyfile:/etc/caddy/Caddyfile:ro"]
+    tmpfs: [/data, /config]
+    depends_on:
+      api: {condition: service_healthy}
+      web: {condition: service_healthy}
+  browser:
+    <<: *app
+    image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
+    shm_size: 1gb
+    environment:
+      <<: *env
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    command: [node_modules/.bin/tsx, --test, tests/release/mvp.test.ts]
+    depends_on: [gateway]

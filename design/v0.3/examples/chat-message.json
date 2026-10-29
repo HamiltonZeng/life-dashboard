@@ -1,0 +1,13 @@
+{
+  "schema_version": "client-command/1.0",
+  "client_message_id": "90000000-0000-4000-8000-000000000003",
+  "text": "帮我安排未来30天每天学习英语20分钟，并设置坚持成就",
+  "entrypoint": "home",
+  "execution": "auto",
+  "selected_refs": [
+    {
+      "entity_type": "module",
+      "id": "90000000-0000-4000-8000-000000000001"
+    }
+  ]
+}

@@ -1,0 +1,225 @@
+{
+  "schema_version": "ai-decision/1.0",
+  "context_ref": "90000000-0000-4000-8000-000000000002",
+  "intent": "plan",
+  "summary": "拟安排英语学习目标、主线、每日学习、累计时长和累计学习日成就；没有实际学习记录。",
+  "assumptions": [
+    {
+      "text": "主线采用手动确认；成就按累计学习日期，非连续天数。",
+      "kind": "configuration_default"
+    }
+  ],
+  "clarification": null,
+  "actions": [
+    {
+      "action_type": "goal.create",
+      "local_ref": "english_goal",
+      "depends_on": [],
+      "evidence_refs": [
+        "message:90000000-0000-4000-8000-000000000003"
+      ],
+      "data": {
+        "module_ref": {
+          "kind": "existing",
+          "id": "90000000-0000-4000-8000-000000000001"
+        },
+        "title": "30天英语学习",
+        "description": "未来30天每天学习英语20分钟",
+        "start_date": "2026-10-20",
+        "target_date": "2026-11-18",
+        "success_criteria": "持续执行每日计划；主线最终由用户确认"
+      }
+    },
+    {
+      "action_type": "record_type.create",
+      "local_ref": "english_log",
+      "depends_on": [],
+      "evidence_refs": [
+        "message:90000000-0000-4000-8000-000000000003"
+      ],
+      "data": {
+        "module_ref": {
+          "kind": "existing",
+          "id": "90000000-0000-4000-8000-000000000001"
+        },
+        "name": "英语学习记录",
+        "fields": [
+          {
+            "key": "duration_minutes",
+            "label": "学习时长",
+            "type": "integer",
+            "required": true,
+            "unit": "分钟",
+            "options": [],
+            "minimum": 0,
+            "maximum": null
+          }
+        ]
+      }
+    },
+    {
+      "action_type": "metric.create",
+      "local_ref": "english_minutes",
+      "depends_on": [
+        "english_log"
+      ],
+      "evidence_refs": [
+        "message:90000000-0000-4000-8000-000000000003"
+      ],
+      "data": {
+        "module_ref": {
+          "kind": "existing",
+          "id": "90000000-0000-4000-8000-000000000001"
+        },
+        "record_type_ref": {
+          "kind": "local",
+          "local_ref": "english_log"
+        },
+        "name": "英语累计学习时长",
+        "unit": "分钟",
+        "aggregation": "sum",
+        "field_key": "duration_minutes",
+        "window": "all_time",
+        "timezone": "Asia/Shanghai",
+        "display_precision": 0
+      }
+    },
+    {
+      "action_type": "task_template.create",
+      "local_ref": "english_main",
+      "depends_on": [
+        "english_goal"
+      ],
+      "evidence_refs": [
+        "message:90000000-0000-4000-8000-000000000003"
+      ],
+      "data": {
+        "module_ref": {
+          "kind": "existing",
+          "id": "90000000-0000-4000-8000-000000000001"
+        },
+        "goal_ref": {
+          "kind": "local",
+          "local_ref": "english_goal"
+        },
+        "title": "完成30天英语学习计划",
+        "category": "main",
+        "timezone": "Asia/Shanghai",
+        "completion_mode": "manual",
+        "rule": null,
+        "color": "blue",
+        "schedule": {
+          "active_from": "2026-10-20",
+          "active_until": "2026-11-18",
+          "weekdays": null,
+          "preferred_local_time": null
+        },
+        "due_at": "2026-11-19T00:00:00+08:00"
+      }
+    },
+    {
+      "action_type": "task_template.create",
+      "local_ref": "english_daily",
+      "depends_on": [
+        "english_goal",
+        "english_log"
+      ],
+      "evidence_refs": [
+        "message:90000000-0000-4000-8000-000000000003"
+      ],
+      "data": {
+        "module_ref": {
+          "kind": "existing",
+          "id": "90000000-0000-4000-8000-000000000001"
+        },
+        "goal_ref": {
+          "kind": "local",
+          "local_ref": "english_goal"
+        },
+        "title": "今天学习英语20分钟",
+        "category": "daily",
+        "timezone": "Asia/Shanghai",
+        "completion_mode": "record_required",
+        "rule": {
+          "kind": "sum",
+          "record_type_ref": {
+            "kind": "local",
+            "local_ref": "english_log"
+          },
+          "field_key": "duration_minutes",
+          "unit": "分钟",
+          "threshold": "20",
+          "filters": []
+        },
+        "color": "blue",
+        "schedule": {
+          "active_from": "2026-10-20",
+          "active_until": "2026-11-18",
+          "weekdays": null,
+          "preferred_local_time": null
+        },
+        "due_at": null
+      }
+    },
+    {
+      "action_type": "achievement_series.create",
+      "local_ref": "english_days",
+      "depends_on": [
+        "english_goal",
+        "english_log"
+      ],
+      "evidence_refs": [
+        "message:90000000-0000-4000-8000-000000000003"
+      ],
+      "data": {
+        "module_ref": {
+          "kind": "existing",
+          "id": "90000000-0000-4000-8000-000000000001"
+        },
+        "goal_ref": {
+          "kind": "local",
+          "local_ref": "english_goal"
+        },
+        "name": "累计英语学习日",
+        "record_type_ref": {
+          "kind": "local",
+          "local_ref": "english_log"
+        },
+        "aggregation": "distinct_days",
+        "field_key": null,
+        "unit": "天",
+        "timezone": "Asia/Shanghai",
+        "filters": [
+          {
+            "field_key": "duration_minutes",
+            "operator": "gte",
+            "value": 1
+          }
+        ],
+        "history_policy": "from_activation",
+        "milestones": [
+          {
+            "local_ref": "english_day_1",
+            "threshold": "1",
+            "label": "累计学习1天"
+          },
+          {
+            "local_ref": "english_day_3",
+            "threshold": "3",
+            "label": "累计学习3天"
+          },
+          {
+            "local_ref": "english_day_7",
+            "threshold": "7",
+            "label": "累计学习7天"
+          },
+          {
+            "local_ref": "english_day_30",
+            "threshold": "30",
+            "label": "累计学习30天"
+          }
+        ]
+      }
+    }
+  ]
+}

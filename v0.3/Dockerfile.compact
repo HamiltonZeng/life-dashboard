@@ -1,0 +1,17 @@
+FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 AS node-runtime
+FROM postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+WORKDIR /workspace
+COPY node_modules/ /workspace/node_modules/
+COPY app/ /workspace/
+COPY reference/ /reference/
+RUN node --version && node scripts/build-web.mjs && rm -rf .runtime
+ENV DATABASE_HOST=127.0.0.1 DATABASE_NAME=life_dashboard_v03 DATABASE_USER=life_dashboard \
+    POSTGRES_USER=life_dashboard POSTGRES_DB=life_dashboard_v03 \
+    PORT=3001 WEB_HOST=0.0.0.0 WEB_PORT=8080 API_PROXY_TARGET=http://127.0.0.1:3001 \
+    APP_ORIGIN=http://localhost:18380 APP_PROFILE=mvp COREPACK_ENABLE_NETWORK=0 \
+    XDG_CACHE_HOME=/workspace/.runtime/cache TMPDIR=/tmp
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
+ CMD node infra/compact/health.mjs
+ENTRYPOINT ["node", "infra/compact/entrypoint.mjs"]

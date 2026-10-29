@@ -1,0 +1,11 @@
+{
+  "kind": "weekly",
+  "period": "previous",
+  "start_date": null,
+  "end_date": null,
+  "timezone": "Asia/Shanghai",
+  "module_ids": [
+    "90000000-0000-4000-8000-000000000001"
+  ],
+  "force_new_revision": false
+}

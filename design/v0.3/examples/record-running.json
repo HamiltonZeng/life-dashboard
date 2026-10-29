@@ -1,0 +1,56 @@
+{
+  "schema_version": "ai-decision/1.0",
+  "context_ref": "90000000-0000-4000-8000-000000000002",
+  "intent": "record",
+  "summary": "拟记录今天跑步3公里、20分钟，并由服务器更新相关结果。",
+  "assumptions": [],
+  "clarification": null,
+  "actions": [
+    {
+      "action_type": "record.create",
+      "local_ref": "run_today",
+      "depends_on": [],
+      "evidence_refs": [
+        "message:90000000-0000-4000-8000-000000000003"
+      ],
+      "data": {
+        "module_ref": {
+          "kind": "existing",
+          "id": "90000000-0000-4000-8000-000000000010"
+        },
+        "record_type_ref": {
+          "kind": "existing",
+          "id": "90000000-0000-4000-8000-000000000011"
+        },
+        "occurred_at": "2026-10-20T18:00:00+08:00",
+        "timezone": "Asia/Shanghai",
+        "values": {
+          "distance_km": "3",
+          "duration_minutes": 20
+        },
+        "task_refs": [],
+        "provenance": [
+          {
+            "field_key": "distance_km",
+            "source_type": "user_statement",
+            "evidence_ref": "message:90000000-0000-4000-8000-000000000003",
+            "quote": "今天跑了3公里",
+            "original_value": "3",
+            "original_unit": "公里"
+          },
+          {
+            "field_key": "duration_minutes",
+            "source_type": "user_statement",
+            "evidence_ref": "message:90000000-0000-4000-8000-000000000003",
+            "quote": "用了20分钟",
+            "original_value": 20,
+            "original_unit": "分钟"
+          }
+        ],
+        "estimated_values": [],
+        "time_precision": "day",
+        "time_basis": "relative_date"
+      }
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+name: life-dashboard-v0-3
+x-node: &node
+  pull_policy: never
+  image: node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+  working_dir: /workspace
+  init: true
+  volumes:
+    - .:/workspace
+    - ../v0.2/node_modules:/workspace/node_modules:ro
+  tmpfs:
+    - /tmp
+  environment: &node-env
+    COREPACK_ENABLE_NETWORK: '0'
+    APP_PROFILE: mvp
+    XDG_CACHE_HOME: /workspace/.runtime/cache
+    COREPACK_HOME: /workspace/.runtime/cache/corepack
+    npm_config_cache: /workspace/.runtime/cache/npm
+    TMPDIR: /tmp
+    PLAYWRIGHT_BROWSERS_PATH: /workspace/.runtime/cache/playwright
+    DATABASE_HOST: postgres
+    DATABASE_NAME: life_dashboard_v03
+    DATABASE_USER: life_dashboard
+    PORT: 3001
+    APP_ORIGIN: http://localhost:18380
+  env_file: .secrets/development.env
+services:
+  postgres:
+    pull_policy: never
+    image: postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+    env_file: .secrets/development.env
+    environment:
+      POSTGRES_USER: life_dashboard
+      POSTGRES_DB: life_dashboard_v03
+    volumes:
+      - ./.runtime/data/postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U life_dashboard -d life_dashboard_v03"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  tools:
+    <<: *node
+    profiles: [tools]
+    command: [node_modules/.bin/tsc, --noEmit]
+  api:
+    <<: *node
+    command: [node_modules/.bin/tsx, apps/api/src/main.ts]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  worker:
+    <<: *node
+    command: [node_modules/.bin/tsx, apps/worker/src/main.ts]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "const fs=require('fs');process.exit(Date.now()-Number(fs.readFileSync('/tmp/worker-heartbeat','utf8'))<240000?0:1)"]
+      interval: 15s
+      timeout: 3s
+      retries: 20
+      start_period: 180s
+  web:
+    <<: *node
+    # Build the T1 frontend from source once, then serve it with the same-origin
+    # static dev server, which proxies /api/* and /health/* to the api service.
+    command: [sh, -c, "node scripts/build-web.mjs && node apps/web/dev-server.mjs"]
+    environment:
+      <<: *node-env
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 5173
+      API_PROXY_TARGET: http://api:3001
+      APP_ORIGIN: http://localhost:18380
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
+  gateway:
+    pull_policy: never
+    image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    # --watch reloads the bind-mounted Caddyfile on change, so editing the unified
+    # entry point does not require recreating the gateway container.
+    command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile, --watch]
+    ports:
+      - 127.0.0.1:18380:80
+    volumes:
+      - ./infra/gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./.runtime/cache/caddy:/data
+      - ./.runtime/cache/caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+  postgres-test:
+    pull_policy: never
+    image: postgres:18-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+    profiles: [test]
+    environment:
+      POSTGRES_USER: life_dashboard
+      POSTGRES_PASSWORD: isolated-test-only
+      POSTGRES_DB: life_dashboard_v03_test
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U life_dashboard -d life_dashboard_v03_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  test:
+    <<: *node
+    profiles: [test]
+    environment:
+      <<: *node-env
+      DATABASE_HOST: postgres-test
+      DATABASE_NAME: life_dashboard_v03_test
+      POSTGRES_PASSWORD: isolated-test-only
+      LOCAL_LOGIN_SECRET: isolated-test-login-secret-at-least-32-characters
+      NODE_ENV: test
+      APP_PROFILE: development
+      PHASE3_ACCEPTANCE: codex-phase3
+      ACCEPTANCE_PROJECT: life-dashboard-v0-3
+      PHASE2_ACCEPTANCE: codex
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    command: [sh, -c, "node_modules/.bin/tsx packages/db/src/migrate.ts && node_modules/.bin/tsx --test --test-concurrency=1 tests/integration/*.test.ts"]

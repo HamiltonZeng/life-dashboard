@@ -1,0 +1,44 @@
+{
+  "schema_version": "turn-response/1.0",
+  "id": "90000000-0000-4000-8000-000000000020",
+  "version": 4,
+  "status": "completed",
+  "operation_id": "90000000-0000-4000-8000-000000000021",
+  "conversation_id": "90000000-0000-4000-8000-000000000022",
+  "message_id": "90000000-0000-4000-8000-000000000003",
+  "answer": "已记录今天跑步3公里、20分钟，相关数值已更新。",
+  "clarification": null,
+  "proposal": {
+    "candidate_id": "90000000-0000-4000-8000-000000000023",
+    "version": 1,
+    "status": "applied",
+    "summary": "记录本次跑步",
+    "confirmation_required": false,
+    "expires_at": "2026-10-21T18:00:00+08:00"
+  },
+  "application": {
+    "schema_version": "application-receipt/1.0",
+    "application_id": "90000000-0000-4000-8000-000000000024",
+    "operation_id": "90000000-0000-4000-8000-000000000025",
+    "cursor": 42,
+    "id_map": [
+      {
+        "local_ref": "run_today",
+        "entity_type": "record",
+        "id": "90000000-0000-4000-8000-000000000026",
+        "version": 1
+      }
+    ],
+    "affected_entities": [
+      {
+        "entity_type": "record",
+        "id": "90000000-0000-4000-8000-000000000026",
+        "version": 1
+      }
+    ],
+    "undo_available": true,
+    "undo_unavailable_reason": null
+  },
+  "report": null,
+  "error": null
+}

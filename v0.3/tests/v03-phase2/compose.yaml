@@ -1,0 +1,51 @@
+x-phase1: &phase1
+ image: node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+ pull_policy: never
+ working_dir: /workspace
+ init: true
+ volumes:
+  - .:/workspace
+  - ../v0.2/node_modules:/workspace/node_modules:ro
+ tmpfs: [/tmp]
+ environment: &isolated
+  NODE_ENV: test
+  COREPACK_ENABLE_NETWORK: '0'
+  PHASE3_ACCEPTANCE: codex-phase3
+  ACCEPTANCE_PROJECT: life-dashboard-v0-3
+  DATABASE_HOST: postgres-test
+  DATABASE_NAME: life_dashboard_v03_test
+  DATABASE_USER: life_dashboard
+  POSTGRES_PASSWORD: isolated-test-only
+  LOCAL_LOGIN_SECRET: phase1-synthetic-browser-login-secret
+  APP_ORIGIN: http://gateway-test
+  API_PROXY_TARGET: http://api-test:3001
+  WEB_HOST: 0.0.0.0
+  PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+services:
+ api-test:
+  <<: *phase1
+  command: [node_modules/.bin/tsx, tests/v03-phase2/server.ts]
+  healthcheck:
+   test: [CMD, node, -e, "fetch('http://localhost:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+   interval: 2s
+   retries: 30
+ worker-test:
+  <<: *phase1
+  command: [node_modules/.bin/tsx, tests/v03-phase2/worker.ts]
+ web-test:
+  <<: *phase1
+  command: [node, apps/web/dev-server.mjs]
+  healthcheck:
+   test: [CMD, node, -e, "fetch('http://localhost:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+   interval: 2s
+   retries: 30
+ gateway-test:
+  image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+  pull_policy: never
+  volumes: [./tests/v02-phase3/Caddyfile:/etc/caddy/Caddyfile:ro]
+  tmpfs: [/data, /config]
+ browser-test:
+  <<: *phase1
+  image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
+  shm_size: 1gb
+  command: [node_modules/.bin/tsx, tests/v03-phase2/browser.ts]

@@ -1,0 +1,8 @@
+import {randomUUID} from 'node:crypto';
+import {writeFileSync,readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const origin='http://gateway-test',login=await fetch(origin+'/api/v1/session',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({login_secret:process.env.LOCAL_LOGIN_SECRET})}),cookie=login.headers.get('set-cookie')!.split(';')[0];
+const call=async(path:string,body?:any)=>{const r=await fetch(origin+'/api/v1/'+path,{method:body?'POST':'GET',headers:{cookie,Origin:origin,'Content-Type':'application/json','Idempotency-Key':randomUUID()},body:body?JSON.stringify(body):undefined});assert.ok(r.ok,await r.clone().text());return (await r.json()).data;};
+const file='.runtime/test-artifacts/v03-phase2/restart.json';
+if(process.argv[2]==='prepare'){const job=await call('reports/generate',{kind:'daily',period:'current',start_date:null,end_date:null,timezone:'Asia/Shanghai',module_ids:[],force_new_revision:true}),records=await call('records'),wallet=await call('wallet');assert.equal(job.status,'queued');writeFileSync(file,JSON.stringify({job,records:records.length,wallet:wallet.balance}));}
+else{const saved=JSON.parse(readFileSync(file,'utf8'));let report:any;for(let n=0;n<100;n++){report=await call('reports/'+saved.job.report_id);if(report.status==='ready'||report.status==='failed')break;await new Promise(r=>setTimeout(r,200));}assert.equal(report.status,'ready',JSON.stringify(report.error));assert.equal((await call('records')).length,saved.records);assert.equal((await call('wallet')).balance,saved.wallet);writeFileSync(file,JSON.stringify({...saved,status:'passed',actual_restart:true,report_status:report.status},null,2)+'\n');}
