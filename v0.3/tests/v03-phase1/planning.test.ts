@@ -109,3 +109,97 @@ test('P1-A09 four categories, future start and expiry do not force a current ins
   const expiredCore=new (await import('../../apps/api/src/service.js')).Service(f.pool,()=>today.plus({days:20}).toJSDate());const result3:any=await expiredCore.mutate(user,randomUUID(),'POST','task-instances/materialize',{});assert.equal((await f.pool.query('SELECT count(*)::int n FROM tasks')).rows[0].n,oldCount);
  }finally{await f.close();}
 });
+
+test('R1 static system prompt, INVALID_REFERENCE retry with sanitized hint, AI_BAD_REQUEST no-retry, and configView diagnostics',async()=>{
+ const prompts:string[]=[];
+ const seenInputs:any[]=[];
+ const stub=new StubGateway((p,c,n)=>{
+  prompts.push(c.instructions);
+  seenInputs.push(structuredClone(c.input));
+  if(n===1)return {...p,context_ref:randomUUID()};
+  return p;
+ });
+ const f=await fixture(stub);
+ try{
+  const cfg=await f.ok('GET','ai/config');
+  assert.equal(cfg.base_url,'https://api.deepseek.com');
+  assert.equal(cfg.thinking,'enabled');
+  assert.equal(cfg.reasoning_effort,'high');
+  assert.equal(cfg.reward_pricing,false);
+  assert.equal(cfg.limits.max_input_tokens,100000);
+  assert.equal(cfg.limits.max_output_tokens,12000);
+
+  const a=await f.send();await f.service.tick();
+  const turnA=await f.ok('GET','ai/runs/'+a.run_id);
+  assert.equal(turnA.status,'completed',JSON.stringify(turnA));
+  assert.equal(stub.calls,2);
+  assert.equal(prompts[0],prompts[1]);
+  assert.ok(prompts[0].includes('00000000-0000-0000-0000-000000000000'));
+  assert.ok(!prompts[0].includes(seenInputs[0].id));
+  assert.equal(seenInputs[1].answers.length,1);
+  assert.match(seenInputs[1].answers[0],/INVALID_REFERENCE/);
+
+  const b=await f.send();await f.service.tick();
+  assert.equal(prompts[2],prompts[0]);
+  assert.notEqual(seenInputs[2].id,seenInputs[0].id);
+
+  const {DomainError}=await import('../../packages/domain/src/index.js');
+  const leakInputs:any[]=[];let leakCalls=0;
+  const leakGateway={generate:async(c:any)=>{leakCalls++;leakInputs.push(structuredClone(c.input));if(leakCalls===1)throw new DomainError('AI_INVALID_OUTPUT','bad Bearer secret_tok_123 sk-abc123456789 '+('x'.repeat(350)),422);return new StubGateway().generate(c,new AbortController().signal);}};
+  const leakService=new PlanningService(f.pool,{gateway:leakGateway,config:f.service.config});
+  const d=await f.send();await leakService.tick();
+  const turnD=await f.ok('GET','ai/runs/'+d.run_id);
+  assert.equal(turnD.status,'completed',JSON.stringify(turnD));
+  assert.equal(leakCalls,2);
+  assert.ok(!leakInputs[1].answers[0].includes('secret_tok_123'));
+  assert.ok(!leakInputs[1].answers[0].includes('sk-abc123456789'));
+  assert.ok(leakInputs[1].answers[0].includes('Bearer [REDACTED]'));
+  assert.ok(leakInputs[1].answers[0].includes('sk-[REDACTED]'));
+  assert.ok(leakInputs[1].answers[0].length<380);
+
+  let badCalls=0;
+  const badGateway={generate:async()=>{badCalls++;throw new DomainError('AI_BAD_REQUEST','bad model',422);}};
+  const badService=new PlanningService(f.pool,{gateway:badGateway,config:f.service.config});
+  const c=await f.send();await badService.tick();
+  const turnC=await f.ok('GET','ai/runs/'+c.run_id);
+  assert.equal(turnC.status,'failed');
+  assert.equal(turnC.error.code,'AI_BAD_REQUEST');
+  assert.equal(badCalls,1);
+
+  const prevEnabled=process.env.V03_AI_ENABLED,prevUrl=process.env.DEEPSEEK_BASE_URL;
+  process.env.V03_AI_ENABLED='1';process.env.DEEPSEEK_BASE_URL='http://insecure.example';
+  try{
+   const invalidService=new PlanningService(f.pool,{gateway:stub});
+   const view=await invalidService.configView(user);
+   assert.equal(view.configuration_error,'AI_CONFIG_INVALID');
+  }finally{
+   if(prevEnabled===undefined)delete process.env.V03_AI_ENABLED;else process.env.V03_AI_ENABLED=prevEnabled;
+   if(prevUrl===undefined)delete process.env.DEEPSEEK_BASE_URL;else process.env.DEEPSEEK_BASE_URL=prevUrl;
+  }
+ }finally{await f.close();}
+});
+
+test('R1 PlanningService enforces maxInput on retry when retry hint pushes payload over limit',async()=>{
+ let measuredBytes=0;
+ const probeStub=new StubGateway((p,c)=>{
+  measuredBytes=Buffer.byteLength(c.instructions+JSON.stringify(c.input),'utf8');
+  return {...p,intent:'answer',actions:[]};
+ });
+ const f=await fixture(probeStub);
+ try{
+  await f.send();await f.service.tick();
+  assert.ok(measuredBytes>20000);
+
+  const conv2=await f.ok('POST','ai/conversations',{entrypoint:'home',title:null});
+  const retryStub=new StubGateway((p,_c,n)=>n===1?{...p,context_ref:randomUUID()}:p);
+  const tightService=new PlanningService(f.pool,{gateway:retryStub,config:{...f.service.config,maxInput:measuredBytes+50}});
+  const b=await f.ok('POST',`ai/conversations/${conv2.id}/messages`,message());
+  await tightService.tick();
+  const turnB=await f.ok('GET','ai/runs/'+b.run_id);
+  assert.equal(turnB.status,'failed');
+  assert.equal(turnB.error.code,'AI_BUDGET_EXCEEDED');
+  assert.equal(retryStub.calls,1);
+  const usageRows=(await f.pool.query('SELECT attempt,reserved_input FROM ai_usage WHERE run_id=$1 ORDER BY attempt',[b.run_id])).rows;
+  assert.equal(usageRows.length,1);
+ }finally{await f.close();}
+});

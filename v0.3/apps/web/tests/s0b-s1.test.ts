@@ -1575,5 +1575,85 @@ export async function runAllWebVerificationTests(): Promise<TestCaseResult[]> {
     return '主页与记录页受控禁用 AI 输入框均禁用发送、明示未开放状态并独立保存草稿；AvatarRendererPort 静态占位实现完整生命周期且模型网络请求数为 0。';
   });
 
+  // 19. R1 Planning Settings Diagnostics: configuration_error, empty-module guide, and non-secret model info
+  await runCase('V03-AI-01', 'S1', 'AI 设置页渲染服务端配置校验错误、空模块授权引导及非密钥模型状态', (c) => {
+    const prevConfig = planning.config;
+    const prevPrefs = planning.preferences;
+    const prevModules = planning.modules;
+    const prevUsage = planning.usage;
+    try {
+      planning.modules = createFixtureBootstrap().modules;
+      planning.usage = [];
+      planning.preferences = {
+        version: 1,
+        automatic_mode: 'clear_commands',
+        readable_module_ids: []
+      };
+      planning.config = {
+        configuration_error: 'AI_CONFIG_INVALID',
+        configured: false,
+        enabled_by_server: false,
+        model: 'deepseek-flash',
+        thinking: 'enabled',
+        reasoning_effort: 'high',
+        remaining: { jobs: 30, input_tokens: 1000000, output_tokens: 200000 },
+        limits: { daily_jobs: 30, daily_input_tokens: 1000000, daily_output_tokens: 200000 }
+      };
+      const errHtml = planning.renderSettings();
+      assert(errHtml.includes('role="alert"') && errHtml.includes('AI_CONFIG_INVALID'), 'Renders configuration_error alert banner', c);
+      assert(errHtml.includes('当前模型：deepseek-flash') && errHtml.includes('思考模式：enabled') && errHtml.includes('推理强度：high'), 'Displays non-secret model/thinking/reasoning details', c);
+
+      planning.config = {
+        ...planning.config,
+        configuration_error: null,
+        configured: true,
+        enabled_by_server: true
+      };
+      const authHtml = planning.renderSettings();
+      assert(authHtml.includes('服务端 DeepSeek 已就绪，请勾选下方至少一个模块并点击保存以启用 AI。'), 'Renders empty-module authorization prompt when ready', c);
+      assert(authHtml.includes('服务端已启用'), 'Preserves server enabled status text', c);
+      assert(!authHtml.includes('role="alert"'), 'Does not render configuration_error alert when null', c);
+
+      const xssHtml = planning.render('home"><img src=x onerror=alert(1)>');
+      assert(!xssHtml.includes('<img src=x onerror=alert(1)>'), 'Escapes entrypoint attribute injection in render()', c);
+      assert(xssHtml.includes('&quot;&gt;&lt;img src=x onerror=alert(1)&gt;'), 'Escaped entrypoint appears safely in render()', c);
+
+      planning.config = {
+        ...planning.config,
+        configuration_error: '<script>alert(1)</script>',
+        model: 'deepseek-flash"><img src=x onerror=alert(2)>',
+        remaining: {
+          jobs: '<img src=x onerror=alert(3)>' as any,
+          input_tokens: '<svg onload=alert(4)>' as any,
+          output_tokens: '<b>5</b>' as any
+        },
+        limits: {
+          daily_jobs: '<script>alert(5)</script>' as any,
+          daily_input_tokens: '<img src=y>' as any,
+          daily_output_tokens: '<u>9</u>' as any
+        }
+      };
+      planning.usage = [
+        {
+          day: '<script>alert(6)</script>',
+          jobs: '<img src=z>' as any,
+          attempts: '<i>2</i>' as any,
+          input_tokens_charged: '<svg>' as any,
+          output_tokens_charged: '<em>3</em>' as any,
+          unknown_attempts: '<s>0</s>' as any
+        }
+      ];
+      const escapedSettings = planning.renderSettings();
+      assert(!escapedSettings.includes('<script>') && !escapedSettings.includes('<img ') && !escapedSettings.includes('<svg'), 'Settings HTML contains no unescaped injected tags across config, limits, remaining, and usage fields', c);
+      assert(escapedSettings.includes('&lt;script&gt;alert(1)&lt;/script&gt;') && escapedSettings.includes('&lt;img src=x onerror=alert(3)&gt;') && escapedSettings.includes('&lt;script&gt;alert(5)&lt;/script&gt;') && escapedSettings.includes('&lt;script&gt;alert(6)&lt;/script&gt;'), 'Injected strings in config, remaining, limits, and usage are HTML-escaped', c);
+    } finally {
+      planning.config = prevConfig;
+      planning.preferences = prevPrefs;
+      planning.modules = prevModules;
+      planning.usage = prevUsage;
+    }
+    return 'AI 设置页在 configuration_error 时展示告警，在就绪且未授权模块时展示引导提示，并展示非密钥模型参数。';
+  });
+
   return results;
 }
