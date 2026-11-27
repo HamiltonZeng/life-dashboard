@@ -469,7 +469,7 @@ function renderLoginScreen(): string {
         </div>
       </div>
       <p style="margin:0;font-size:13px;color:var(--ld-text-secondary);line-height:1.6;">
-        请输入 <code>v0.1/.secrets/development.env</code> 中的 <code>LOCAL_LOGIN_SECRET</code>。
+        请输入 <code>v0.3/.secrets/development.env</code> 中的 <code>LOCAL_LOGIN_SECRET</code>。
         服务端将验证 Origin 并签发 7 天有效的 <code>HttpOnly; SameSite=Strict</code> 会话 Cookie，前端不会将口令写入 localStorage。
       </p>
       ${
@@ -549,7 +549,7 @@ function renderShellAndMain(): string {
 
   let mainContentHtml = '';
   if (state.route === '/') {
-    mainContentHtml = renderHomePanel(state, data, state.home).replace('</main>',reports.render()+'</main>');
+    mainContentHtml = renderHomePanel(state, data, state.home, () => reports.render());
   } else if (!data) {
     mainContentHtml = `<main class="ld-main"><div class="ld-panel-container"><div class="ld-card">正在加载面板数据...</div></div></main>`;
   } else if (state.route === '/tasks') {
@@ -645,7 +645,11 @@ export function renderApp(options: { preserveModalInput?: boolean } = {}): void 
   }
 
   const snapshot = options.preserveModalInput ? captureActiveFormSnapshot() : null;
-  planning.setAccount(state.user?.id??'',state.bootstrap?.modules??[]);
+  const account = state.user?.id ?? '';
+  const credentialEdit = state.route === '/settings' && account && account === planning.account
+    ? planning.captureCredentialEdit(root)
+    : null;
+  planning.setAccount(account,state.bootstrap?.modules??[]);
   planning.changed=()=>planning.mount();
   planning.refresh=async()=>{await refreshBootstrapAndNotify(undefined,false,true);};
   root.innerHTML = renderShellAndMain();
@@ -653,6 +657,7 @@ export function renderApp(options: { preserveModalInput?: boolean } = {}): void 
   if (snapshot) {
     restoreActiveFormSnapshot(snapshot);
   }
+  planning.restoreCredentialEdit(root,credentialEdit);
   syncAvatarRendererLifecycle();
   bindDynamicModalControllers(
     state,

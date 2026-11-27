@@ -7,9 +7,14 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     env_file: .secrets/development.env
+    environment:
+      API_HOST: 127.0.0.1
+      V03_LOCAL_AI_KEY_FILE: /run/dashboard-ai-vault/master-key
+      V03_LOCAL_AI_STORE_DIR: /workspace/.runtime/ai-vault
     ports:
       - 127.0.0.1:18380:8080
     volumes:
       - ./.runtime/data/postgres:/var/lib/postgresql
       - ./.runtime/compact-state:/workspace/.runtime
+      - ./.secrets/ai-vault:/run/dashboard-ai-vault:ro
     tmpfs: [/tmp]

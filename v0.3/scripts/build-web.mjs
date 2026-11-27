@@ -30,6 +30,7 @@ const WEB_DIST_DIR = path.join(repoRoot, 'apps', 'web', 'dist');
 const BUILD_DIR = path.join(repoRoot, '.runtime', 'build-web');
 
 const UI_SOURCE_SPECIFIER = '../../../packages/ui/src/index.js';
+const BACKUP_CONTRACT_SPECIFIER = '../../../packages/contracts/src/backup-format.js';
 const UI_BROWSER_SPECIFIER = '/packages/ui/dist/index.js';
 
 function listSourceFiles(dir) {
@@ -121,7 +122,8 @@ resetDir(UI_DIST_DIR);
 const uiFileCount = copyJsFiles(emittedUiDir, UI_DIST_DIR);
 
 resetDir(WEB_DIST_DIR);
-const webFileCount = copyJsFiles(emittedWebDir, WEB_DIST_DIR);
+const webFileCount = copyJsFiles(emittedWebDir, WEB_DIST_DIR) + 1;
+fs.copyFileSync(path.join(BUILD_DIR, 'packages/contracts/src/backup-format.js'), path.join(WEB_DIST_DIR, 'backup-format.js'));
 
 // Rewrite browser-facing UI import specifiers to the statically served dist path.
 let rewrittenFiles = 0;
@@ -129,8 +131,11 @@ for (const name of fs.readdirSync(WEB_DIST_DIR).sort()) {
   if (!name.endsWith('.js')) continue;
   const filePath = path.join(WEB_DIST_DIR, name);
   const source = fs.readFileSync(filePath, 'utf8');
-  if (!source.includes(UI_SOURCE_SPECIFIER)) continue;
-  fs.writeFileSync(filePath, source.split(UI_SOURCE_SPECIFIER).join(UI_BROWSER_SPECIFIER), 'utf8');
+  const rewritten = source
+    .replaceAll(UI_SOURCE_SPECIFIER, UI_BROWSER_SPECIFIER)
+    .replaceAll(BACKUP_CONTRACT_SPECIFIER, './backup-format.js');
+  if (rewritten === source) continue;
+  fs.writeFileSync(filePath, rewritten, 'utf8');
   rewrittenFiles += 1;
 }
 

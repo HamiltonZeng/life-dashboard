@@ -8,6 +8,12 @@ import {DomainError,requireThat,validateValues,type Fact} from '../../../package
 import {REWARD_POLICY,periodAt,quotaPeriod,ruleProgress} from '../../../packages/domain/src/phase2/rules.js';
 import type {Core} from './phase2-core.js';
 
+export class TaskRuleValidationError extends DomainError {
+ constructor(readonly reason:'manual_has_rule'|'missing_rule'|'nonpositive_threshold',message:string){
+  super('INVALID_RULE',message);
+ }
+}
+
 export async function validateMeasure(core:Core,c:Client,user:string,module:string,rule:any) {
  const type=await core.type(c,user,module,rule.record_type_id);
  if(rule.kind==='linked_field_gte'||rule.kind==='sum'||rule.aggregation==='sum'){
@@ -23,7 +29,9 @@ export async function validateMeasure(core:Core,c:Client,user:string,module:stri
 }
 async function validateTemplate(core:Core,c:Client,user:string,d:schema.TaskTemplateInput){
  await core.module(c,user,d.module_id);
- requireThat(d.completion_mode==='manual'?d.rule===null:d.rule!==null,'INVALID_RULE','Completion mode and rule disagree');
+ if(d.completion_mode==='manual'&&d.rule!==null)throw new TaskRuleValidationError('manual_has_rule','手动完成的任务不能同时按记录验收。请保留一种方式。');
+ if(d.completion_mode!=='manual'&&d.rule===null)throw new TaskRuleValidationError('missing_rule','按记录验收的任务需要指定验收规则，例如按学习时长或记录次数。');
+ if(d.rule&&'threshold' in d.rule&&!new Decimal(d.rule.threshold).gt(0))throw new TaskRuleValidationError('nonpositive_threshold','任务验收目标必须大于零。请确认希望达到的数值或次数。');
  requireThat(d.category==='main'||d.due_at===null,'INVALID_PERIOD','Only main tasks have a due date');
  if(d.schedule)scheduledPeriod(d,core.now());
  if(d.rule)await validateMeasure(core,c,user,d.module_id,d.rule);

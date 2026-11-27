@@ -25,9 +25,9 @@ export function gatewayConfig(env:NodeJS.ProcessEnv=process.env){
 }
 export type GatewayConfig=ReturnType<typeof gatewayConfig>;
 export class DeepSeekGateway implements Gateway {
- constructor(readonly config:GatewayConfig,readonly fetcher:typeof fetch=fetch){}
+ constructor(readonly config:GatewayConfig|(()=>GatewayConfig),readonly fetcher:typeof fetch=fetch){}
  async generate(context:any,signal:AbortSignal):Promise<GatewayResult>{
-  const c=this.config;
+  const c=typeof this.config==='function'?this.config():this.config;
   if(!c.enabled||!c.configured)throw new DomainError('AI_NOT_CONFIGURED','请在服务器配置 DeepSeek 并启用连接。',409);
   const payloadBody:Record<string,unknown>={
    model:c.model,response_format:{type:'json_object'},max_tokens:c.maxOutput,stream:false,
@@ -38,7 +38,7 @@ export class DeepSeekGateway implements Gateway {
   if(c.thinking!=='enabled')payloadBody.temperature=c.temperature??0.2;
   let response:Response;
   try {response=await this.fetcher(c.baseUrl.replace(/\/+$/,'')+'/chat/completions',{
-   method:'POST',signal,headers:{Authorization:`Bearer ${c.apiKey}`,'Content-Type':'application/json'},
+   method:'POST',signal,redirect:'error',headers:{Authorization:`Bearer ${c.apiKey}`,'Content-Type':'application/json'},
    body:JSON.stringify(payloadBody)
   });}catch(e){if(signal.aborted)throw new DomainError('AI_TIMEOUT','模型请求已超时或取消。',503);throw new DomainError('AI_UNAVAILABLE','模型服务暂时不可用。',503);}
   const cancelBody=()=>{void response.body?.cancel().catch(()=>{});};

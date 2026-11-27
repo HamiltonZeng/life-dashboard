@@ -264,7 +264,8 @@ function computeEffectiveHomeWarnings(home: HomeData): HomeWarning[] {
 export function renderHomePanel(
   state: AppState,
   data: BootstrapData | null,
-  explicitHome?: HomeData | null
+  explicitHome?: HomeData | null,
+  renderReports?: () => string
 ): string {
   const home = explicitHome ?? state.home ?? buildFallbackHomeFromBootstrap(state, data);
   const prefs = state.homePreferences ?? home.preferences;
@@ -275,6 +276,7 @@ export function renderHomePanel(
     return `<main class="ld-main ld-home-minimal" id="ld-home-minimal" data-home-mode="minimal" aria-label="首页（极简模式）">
       <div class="ld-minimal-ai-stage">
         ${planning.render('home')}
+        <button type="button" class="ld-btn" data-action="toggle-minimal-mode" id="ld-minimal-exit-btn">返回标准首页</button>
       </div>
     </main>`;
   }
@@ -660,6 +662,7 @@ export function renderHomePanel(
         </div>
       </div>
     </div>
+    ${renderReports?.() ?? ''}
   </main>`;
 }
 

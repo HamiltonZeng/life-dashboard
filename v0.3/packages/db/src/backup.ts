@@ -1,14 +1,13 @@
 import { createHash } from 'node:crypto';
 import type pg from 'pg';
 import { CONTRACT_VERSION } from '../../contracts/src/index.js';
+import { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION, supportsBackupVersion } from '../../contracts/src/backup-format.js';
+export { BACKUP_FORMAT, BACKUP_SCHEMA_VERSION };
 
 // Minimal, explicit user-data export/restore used by S1.
 // Only whitelisted tables/columns leave the server. Sessions/credentials and AI audit
 // artifacts are intentionally excluded; idempotency receipts are included so a restored
 // environment cannot silently replay an old write into a duplicate fact.
-
-export const BACKUP_FORMAT = 'life-dashboard-user-export';
-export const BACKUP_SCHEMA_VERSION = 3;
 
 export const BACKUP_TABLES = [
   {
@@ -207,7 +206,7 @@ export function validateBackup(raw: unknown): UserDataBackup {
   }
   const backup = raw as Record<string, unknown>;
   if (backup.format !== BACKUP_FORMAT) throw new BackupError('INVALID_FORMAT', `Unsupported backup format: ${String(backup.format)}`);
-  if (![1,2,BACKUP_SCHEMA_VERSION].includes(Number(backup.schema_version))) throw new BackupError('UNSUPPORTED_VERSION', `Unsupported backup schema version: ${String(backup.schema_version)}`);
+  if (!supportsBackupVersion(Number(backup.schema_version))) throw new BackupError('UNSUPPORTED_VERSION', `Unsupported backup schema version: ${String(backup.schema_version)}`);
   if (typeof backup.checksum !== 'string' || !/^[a-f0-9]{64}$/.test(backup.checksum)) throw new BackupError('INVALID_BACKUP', 'Backup checksum is missing or invalid');
   if (!Array.isArray(backup.migrations)) throw new BackupError('INVALID_BACKUP', 'Backup migration list is missing');
   if (!backup.data || typeof backup.data !== 'object' || Array.isArray(backup.data)) throw new BackupError('INVALID_BACKUP', 'Backup data payload is missing');
