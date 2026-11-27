@@ -10,7 +10,7 @@ import type {PlanningService} from '../ai/service.js';
 const j=JSON.stringify;
 export class ReportsService {
  readonly jobs:ModelJobs;
- constructor(readonly planning:PlanningService){this.jobs=new ModelJobs(planning.pool,planning.gateway,planning.config);}
+ constructor(readonly planning:PlanningService){this.jobs=new ModelJobs(planning.pool,planning.gateway,()=>planning.config);}
  get pool(){return this.planning.pool;}
  async scope(c:Pick<Client,'query'>,user:string,requested:string[]){
   const p=await this.planning.preferences(user,c),ids=[...new Set(requested.length?requested:p.readable_module_ids)].sort() as string[];

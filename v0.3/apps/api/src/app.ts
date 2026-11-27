@@ -1,7 +1,7 @@
 import {PlanningService} from './ai/service.js';
 import {registerPlanning} from './ai/routes.js';
 import {readWallet,readLedger} from './phase2-wallet.js';
-import Fastify from 'fastify';
+import Fastify,{LogController} from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z, ZodError } from 'zod';
@@ -19,6 +19,10 @@ import { loadAiConfig, type AiConfig } from '../../../packages/ai/src/config.js'
 import {loadAppProfile,type AppProfile} from './profile.js';
 
 const hash = (s:string)=>createHash('sha256').update(s).digest('hex');
+const credentialInput=z.discriminatedUnion('action',[
+  z.strictObject({action:z.literal('save'),login_secret:z.string().max(256),api_key:z.string().trim().regex(/^[A-Za-z0-9._~-]{16,256}$/)}),
+  z.strictObject({action:z.literal('remove'),login_secret:z.string().max(256)})
+]);
 export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecret?:string; origin?:string; profile?:AppProfile; ai?:AiService; aiConfig?:AiConfig; aiAdapter?:ModelAdapter; now?:()=>Date;planning?:PlanningService}={}) {
   const profile=loadAppProfile(options.profile??process.env.APP_PROFILE);
   const secret=options.loginSecret??process.env.LOCAL_LOGIN_SECRET;
@@ -26,7 +30,7 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
   const origin=options.origin??process.env.APP_ORIGIN??'http://localhost:18080';
   const secure=new URL(origin).protocol==='https:';
   const service=new Service(pool,options.now);
-  const planning=options.planning??new PlanningService(pool,{now:options.now});
+  const planning=options.planning??new PlanningService(pool,{now:options.now,origin});
   // Disabled MVP AI must not even parse stale provider configuration or construct an adapter.
   const createAi=()=>{
     const aiConfig=options.aiConfig??loadAiConfig();
@@ -40,7 +44,9 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
   };
   const ai=profile==='development'?createAi():null;
   const disabledAi={profile:'mvp',enabled:false,provider:'disabled',cloud_ai:false,configured:false,model:'',schema_version:'1.0',supported_content_types:[],notes:['v0.3 开发准备环境，AI 功能尚未实现。']};
-  const app=Fastify({logger:options.logger??false,bodyLimit:128*1024,requestTimeout:15000});
+  const app=Fastify({logger:options.logger??false,bodyLimit:128*1024,requestTimeout:15000,
+    logController:new LogController({disableRequestLogging:req=>['/api/v1/session','/api/v1/ai/credential'].includes(req.url.split('?')[0])})
+  });
   await app.register(rateLimit,{global:false});
   app.decorateRequest('accountId','');
   app.setErrorHandler((error,request,reply)=>{
@@ -65,7 +71,7 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
     const path=req.url.split('?')[0];
     if(/^\/api\/v1\/(ai\/(chat|recording|profile-update|reward-pricing)|avatar\/(render|redeem))(\/|$)/.test(path)) throw new DomainError('FEATURE_DISABLED','This capability is not available',409);
     if(path.startsWith('/api/v1/wallet')&&req.method!=='GET')throw new DomainError('FEATURE_DISABLED','Wallet writes are internal only',409);
-    if(profile==='mvp' && path.startsWith('/api/v1/ai/') && !/^\/api\/v1\/ai\/(config|usage|preferences|conversations|runs|proposals|applications|context\/search)(\/|$)/.test(path)) {
+    if(profile==='mvp' && path.startsWith('/api/v1/ai/') && !/^\/api\/v1\/ai\/(config|credential|usage|preferences|conversations|runs|proposals|applications|context\/search)(\/|$)/.test(path)) {
       throw new DomainError('FEATURE_DISABLED','AI is disabled in the MVP profile',409);
     }
   });
@@ -88,14 +94,16 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
     return {data:{signed_out:true}};
   });
   app.get('/api/v1/me',async req=>({data:(await pool.query('SELECT id,name,timezone FROM users WHERE id=$1',[req.accountId])).rows[0]}));
-  app.get('/api/v1/capabilities',async req=>({data:{
+  app.get('/api/v1/capabilities',async req=>{
+    const currentAI=await planning.configView(req.accountId);
+    return {data:{
     contract_version:CONTRACT_VERSION,profile,stage:profile==='mvp'?'v0.3-phase2':'T2/T3-ai',sync:false,
-    cloud_ai:profile==='mvp'?(await planning.configView(req.accountId)).enabled:ai?.configSummary().cloud_ai??false,ai_planning:profile==='mvp'?(await planning.configView(req.accountId)).enabled:false,legacy_ai_generation:ai!==null,ai_generation:profile==='mvp'?(await planning.configView(req.accountId)).enabled:ai!==null,ai_provider:profile==='mvp'?((await planning.configView(req.accountId)).enabled?'deepseek':'disabled'):ai?.configSummary().provider??'disabled',
+    cloud_ai:profile==='mvp'?currentAI.enabled:ai?.configSummary().cloud_ai??false,ai_planning:profile==='mvp'?currentAI.enabled:false,legacy_ai_generation:ai!==null,ai_generation:profile==='mvp'?currentAI.enabled:ai!==null,ai_provider:profile==='mvp'?(currentAI.enabled?'deepseek':'disabled'):ai?.configSummary().provider??'disabled',
     ai_schema_version:'1.0',ai_preview:ai!==null,
-    app_version:'0.3.0-phase2',home:true,home_preferences:true,profile_fields:true,ai_chat:profile==='mvp'?(await planning.configView(req.accountId)).enabled:false,ai_recording:(await planning.configView(req.accountId)).enabled,ai_profile_update:(await planning.configView(req.accountId)).enabled,ai_reward_pricing:(await planning.configView(req.accountId)).enabled&&planning.config.rewardPricing,reports:true,report_schedules:true,daily_statistics:true,avatar_renderer:false,avatar_redemption:false,
-    recurring_tasks:true,trends:true,achievement_milestones:true,token_wallet:true,profile_observations:true,observation_binding_precondition:true,ai_task_generation:(await planning.configView(req.accountId)).enabled,ai_metric_analysis:(await planning.configView(req.accountId)).enabled,ai_achievement_generation:(await planning.configView(req.accountId)).enabled,professional_ledger:false,local_session:true,user_export:true,user_restore:'cli',
+    app_version:'0.3.0-phase2',home:true,home_preferences:true,profile_fields:true,ai_chat:profile==='mvp'?currentAI.enabled:false,ai_recording:currentAI.enabled,ai_profile_update:currentAI.enabled,ai_reward_pricing:currentAI.enabled&&currentAI.reward_pricing,reports:true,report_schedules:true,daily_statistics:true,avatar_renderer:false,avatar_redemption:false,
+    recurring_tasks:true,trends:true,achievement_milestones:true,token_wallet:true,profile_observations:true,observation_binding_precondition:true,ai_task_generation:currentAI.enabled,ai_metric_analysis:currentAI.enabled,ai_achievement_generation:currentAI.enabled,professional_ledger:false,local_session:true,user_export:true,user_restore:'cli',
     aggregations:['count','sum','avg','latest'],windows:['day','week','month','all_time']
-  }}));
+  }};});
   const idempotency=(req:any)=>uuid.parse(req.headers['idempotency-key']);
   for(const route of ['profile','home-preferences','home']) app.get(`/api/v1/${route}`,async req=>({data:await service.configuration(req.accountId,route)}));
   for(const route of ['profile','home-preferences']) app.patch(`/api/v1/${route}`,async req=>service.mutate(req.accountId,idempotency(req),'PATCH',route,req.body));
@@ -116,6 +124,18 @@ export async function buildApp(pool:pg.Pool, options:{logger?:boolean; loginSecr
   app.get('/api/v1/bootstrap',async req=>({data:await service.snapshot(req.accountId)}));
   app.get('/api/v1/export',async req=>({data:await exportUserData(pool,req.accountId)}));
   app.get('/api/v1/ai/config',async req=>({data:profile==='development'?ai?.configView():await planning.configView(req.accountId)}));
+  app.post('/api/v1/ai/credential',{bodyLimit:4096,config:{rateLimit:{max:5,timeWindow:'1 minute'}}},async req=>{
+    const vault=planning.localCredentials;
+    requireThat(profile==='mvp'&&req.accountId===LOCAL_USER_ID&&vault,'CREDENTIAL_SETTINGS_DISABLED','此部署无法从网页管理 DeepSeek 密钥。',403);
+    // This request bypasses mutation receipts, drafts and all AI processing.
+    const parsed=credentialInput.safeParse(req.body);
+    requireThat(parsed.success,'INVALID_CREDENTIAL_INPUT','请提供有效的 DeepSeek 密钥和本地登录口令。',400);
+    const input=parsed.data;
+    requireThat(timingSafeEqual(Buffer.from(hash(input.login_secret)),Buffer.from(hash(secret))),'INVALID_CREDENTIALS','本地登录口令不正确。',401);
+    if(input.action==='save')vault.save(input.api_key);
+    else vault.remove();
+    return {data:{saved:input.action==='save'}};
+  });
   registerPlanning(app,planning);
   app.post('/api/v1/ai/generations',async req=>({data:await ai!.createGeneration(req.accountId,aiGenerationInput.parse(req.body),idempotency(req))}));
   app.get('/api/v1/ai/generations',async req=>ai!.listGenerations(req.accountId,pageQuery.parse(req.query)));

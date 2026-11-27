@@ -203,3 +203,49 @@ test('R1 PlanningService enforces maxInput on retry when retry hint pushes paylo
   assert.equal(usageRows.length,1);
  }finally{await f.close();}
 });
+
+test('task acceptance preflight repairs only within the existing model budget', async t => {
+ const variants = [
+  ['manual with a rule', (data:any) => { data.completion_mode='manual'; }, /manual task has a record rule/],
+  ['missing record rule', (data:any) => { data.rule=null; }, /missing its rule/],
+  ['zero threshold', (data:any) => { data.rule.threshold='0'; }, /nonpositive threshold/],
+ ] as const;
+ for(const [name, mutate, feedback] of variants)await t.test(name,async()=>{
+  const stub=new StubGateway((plan,context,attempt)=>{
+   if(attempt===1)mutate(plan.actions.find((action:any)=>action.action_type==='task_template.create'&&action.data.rule).data);
+   else{assert.match(context.input.retry_hint,feedback);assert.deepEqual(context.input.answers,[]);}
+   return plan;
+  });
+  const f=await fixture(stub);
+  try{
+   const accepted=await f.send();
+   await f.service.tick();
+   const turn=await f.ok('GET','ai/runs/'+accepted.run_id);
+   assert.equal(turn.status,'awaiting_confirmation');
+   assert.equal(stub.calls,2);
+   const usage=(await f.pool.query('SELECT attempt,status FROM ai_usage WHERE run_id=$1 ORDER BY attempt',[accepted.run_id])).rows;
+   assert.deepEqual(usage,[{attempt:1,status:'known'},{attempt:2,status:'known'}]);
+   for(const table of ['task_templates','records','wallet_ledger'])
+    assert.equal((await f.pool.query(`SELECT count(*)::int n FROM ${table}`)).rows[0].n,0);
+  }finally{await f.close();}
+ });
+
+ await t.test('two invalid replies show the problem and never write a partial plan',async()=>{
+  const stub=new StubGateway(plan=>{
+   plan.actions.find((action:any)=>action.action_type==='task_template.create'&&action.data.rule).data.rule.threshold='0';
+   return plan;
+  });
+  const f=await fixture(stub);
+  try{
+   const accepted=await f.send();
+   await f.service.tick();
+   const turn=await f.ok('GET','ai/runs/'+accepted.run_id);
+   assert.equal(turn.status,'failed');
+   assert.equal(turn.error.code,'INVALID_RULE');
+   assert.match(turn.error.message,/任务验收目标必须大于零.*尚未保存/);
+   assert.equal(stub.calls,2);
+   for(const table of ['goals','task_templates','ai_proposals','records','wallet_ledger'])
+    assert.equal((await f.pool.query(`SELECT count(*)::int n FROM ${table}`)).rows[0].n,0);
+  }finally{await f.close();}
+ });
+});

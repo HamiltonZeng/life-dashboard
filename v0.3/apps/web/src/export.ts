@@ -10,8 +10,7 @@
  */
 import type { UserExportPayload } from './types.js';
 
-const EXPORT_FORMAT = 'life-dashboard-user-export';
-const EXPORT_SCHEMA_VERSION = 1;
+import { BACKUP_FORMAT, SUPPORTED_BACKUP_VERSIONS, supportsBackupVersion } from '../../../packages/contracts/src/backup-format.js';
 
 export class ExportPayloadError extends Error {
   readonly code: string;
@@ -67,16 +66,16 @@ export function assertUserExportPayload(value: unknown): UserExportPayload {
     throw new ExportPayloadError('INVALID_EXPORT', '服务器返回的导出数据不是 JSON 对象');
   }
   const candidate = value as Partial<UserExportPayload>;
-  if (candidate.format !== EXPORT_FORMAT) {
+  if (candidate.format !== BACKUP_FORMAT) {
     throw new ExportPayloadError(
       'INVALID_EXPORT_FORMAT',
-      `导出数据格式不匹配（期望 ${EXPORT_FORMAT}，实际 ${String(candidate.format)}）`
+      `导出数据格式不匹配（期望 ${BACKUP_FORMAT}，实际 ${String(candidate.format)}）`
     );
   }
-  if (candidate.schema_version !== EXPORT_SCHEMA_VERSION) {
+  if (!supportsBackupVersion(candidate.schema_version)) {
     throw new ExportPayloadError(
       'UNSUPPORTED_EXPORT_VERSION',
-      `不支持的导出数据版本 ${String(candidate.schema_version)}（当前支持 ${EXPORT_SCHEMA_VERSION}）`
+      `不支持的导出数据版本 ${String(candidate.schema_version)}（当前支持 ${SUPPORTED_BACKUP_VERSIONS.join('、')}）`
     );
   }
   if (typeof candidate.exported_at !== 'string' || Number.isNaN(new Date(candidate.exported_at).getTime())) {

@@ -8,7 +8,7 @@ const repoRoot = path.resolve(__dirname, '../..');
 const port = Number(process.env.WEB_PORT ?? 5173);
 const host = process.env.WEB_HOST ?? '127.0.0.1';
 const apiTarget = new URL(process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:18080');
-const appOrigin = process.env.APP_ORIGIN ?? 'http://localhost:18080';
+const appOrigin = new URL(process.env.APP_ORIGIN ?? 'http://localhost:18080');
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -20,7 +20,7 @@ const MIME_TYPES = {
 };
 
 function proxyToApi(req, res) {
-  const headers = { ...req.headers, host: apiTarget.host, origin: appOrigin };
+  const headers = { ...req.headers, host: apiTarget.host };
   const proxyReq = http.request(
     {
       hostname: apiTarget.hostname,
@@ -51,6 +51,12 @@ function proxyToApi(req, res) {
 const server = http.createServer((req, res) => {
   const rawUrl = req.url ?? '/';
   const pathname = rawUrl.split('?')[0];
+
+  if (pathname === '/api/v1/ai/credential' && req.headers.host !== appOrigin.host) {
+    res.writeHead(403, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ error: { code: 'INVALID_HOST', message: '请从本机应用地址打开设置。' } }));
+    return;
+  }
 
   if (pathname.startsWith('/api/') || pathname.startsWith('/health/')) {
     proxyToApi(req, res);

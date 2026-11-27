@@ -978,6 +978,14 @@ export async function runAllWebVerificationTests(): Promise<TestCaseResult[]> {
       data: { modules: [], records: [] }
     };
     const validated = assertUserExportPayload(payload);
+    for (const schema_version of [2, 3]) {
+      const compatible = { ...payload, schema_version };
+      assert(assertUserExportPayload(compatible) === compatible, 'Downloads complete compatible backups', c);
+    }
+    let rejectedFuture = false;
+    try { assertUserExportPayload({ ...payload, schema_version: 4 }); }
+    catch { rejectedFuture = true; }
+    assert(rejectedFuture, 'Unknown backup version is rejected before download', c);
     assert(validated === payload, 'assertUserExportPayload accepts the contract-shaped export envelope', c);
 
     const filename = buildExportFilename(exportedAt, 'Asia/Shanghai');
@@ -1350,7 +1358,10 @@ export async function runAllWebVerificationTests(): Promise<TestCaseResult[]> {
     state.homePreferences = prefs;
 
     planning.draft=loadAiDraft('home');
-    const minimalHtml = renderHomePanel(state, data);
+    const renderReports = () => '<section data-report-root>报告</section>';
+    const minimalHtml = renderHomePanel(state, data, undefined, renderReports);
+    assert(minimalHtml.includes('id="ld-minimal-exit-btn"'), 'Minimal home offers a direct exit', c);
+    assert(!minimalHtml.includes('data-report-root'), 'Minimal home does not mount the report form', c);
     assert(minimalHtml.includes('id="ld-home-minimal"'), 'Minimal mode renders #ld-home-minimal container', c);
     assert(minimalHtml.includes('data-planning-root="home"') && minimalHtml.includes('id="v03-composer-home"'), 'Minimal mode renders centered AI input box', c);
     assert(minimalHtml.includes('帮我记录今天下午 45 分钟的 Rust 并发练习'), 'Preserves local AI draft across mode switch', c);
@@ -1362,7 +1373,8 @@ export async function runAllWebVerificationTests(): Promise<TestCaseResult[]> {
 
     // Switch back to standard mode -> pinned order and AI draft remain intact
     prefs.minimal_mode = false;
-    const standardHtml = renderHomePanel(state, data);
+    const standardHtml = renderHomePanel(state, data, undefined, renderReports);
+    assert(standardHtml.includes('data-report-root'), 'Standard home still mounts reports', c);
     assert(standardHtml.includes('id="ld-home-standard"'), 'Restores #ld-home-standard when minimal_mode is false', c);
     assert(standardHtml.includes('帮我记录今天下午 45 分钟的 Rust 并发练习'), 'Home AI draft remains intact after switching back to standard mode', c);
     assert(

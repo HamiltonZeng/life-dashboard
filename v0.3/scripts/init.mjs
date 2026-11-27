@@ -4,4 +4,11 @@ for (const dir of ['.secrets', '.runtime/tmp', '.runtime/data/postgres', '.runti
 chmodSync('.secrets', 0o700);
 const path = '.secrets/development.env';
 if (!existsSync(path)) writeFileSync(path, `POSTGRES_PASSWORD=${randomBytes(32).toString('hex')}\nLOCAL_LOGIN_SECRET=${randomBytes(32).toString('hex')}\n# AI provider: mock (default, no network) or deepseek (requires DEEPSEEK_API_KEY)\nAI_PROVIDER=mock\n# DEEPSEEK_API_KEY=\nDEEPSEEK_MODEL=deepseek-flash\nDEEPSEEK_BASE_URL=https://api.deepseek.com\n# v0.3 planning is explicitly enabled only after server configuration and UI authorization.\nV03_AI_ENABLED=0\nV03_AI_THINKING=enabled\nV03_AI_REASONING_EFFORT=high\nV03_AI_REWARD_PRICING=1\nV03_AI_DAILY_JOBS=30\nV03_AI_DAILY_INPUT_TOKENS=1000000\nV03_AI_DAILY_OUTPUT_TOKENS=200000\nV03_AI_MAX_INPUT_TOKENS=100000\nV03_AI_MAX_OUTPUT_TOKENS=12000\n`, { mode: 0o600 });
+const vaultDir = '.secrets/ai-vault';
+mkdirSync(vaultDir, { recursive: true, mode: 0o700 });
+try {
+  writeFileSync(vaultDir + '/master-key', randomBytes(32), { mode: 0o600, flag: 'wx', flush: true });
+} catch (error) {
+  if (error.code !== 'EEXIST') throw error;
+}
 console.log('Version-local directories and private configuration ready; existing credentials preserved.');
